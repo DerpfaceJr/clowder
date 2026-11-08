@@ -1,0 +1,77 @@
+/* Routines (routines-panel.js): a centred dialog on desktop and a full-screen page with a back pill on phones, like AI models.
+   Colours are the theme tokens in style.css; cards, switches, notes, messages and warnings reuse the connectors panel's cx- classes. */
+#routines-dialog{width:min(760px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:88dvh;margin:auto;padding:0 20px 20px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
+#routines-dialog [hidden]{display:none!important}
+/* The title row stays on screen while the list scrolls under it. */
+#routines-dialog .rt-top{position:sticky;top:0;z-index:2;gap:8px;min-height:56px;margin:0 -20px;padding:8px 12px 4px 20px;background:var(--paper)}
+#routines-dialog h2{margin:2px 0 6px;font:26px/1.15 var(--font-display);overflow-wrap:anywhere}
+#routines-dialog .rt-lede{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
+.rt-banner{margin:0 0 12px}
+.rt-bar{display:flex;margin:0 0 12px}
+#routines-dialog .rt-bar .primary{font-weight:600}
+.rt-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.rt-card{gap:10px}
+.rt-card .cx-title strong{font-size:17px}
+#routines-dialog .rt-switch{flex-shrink:0;margin:0;font-size:13px}
+/* The server's safety warning: the warning colours of .cx-warn, larger, with a strong edge, so it is read before Run now. */
+#routines-dialog .rt-warning{display:grid;gap:2px;margin:0;padding:12px 14px;border-left:4px solid currentColor;font-size:14px;line-height:1.45}
+#routines-dialog .rt-banner .rt-warning{display:block}
+#routines-dialog .rt-when{margin:0;font:600 15px/1.35 var(--font-ui);color:var(--ink)}
+#routines-dialog .rt-who{margin:0;font-size:13px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+#routines-dialog .cx-note{margin:0;font-size:13px}
+.rt-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0}
+.rt-facts>div{min-width:0;padding:8px 10px;border:0;border-radius:var(--r-sm);background:var(--paper-2)}
+.rt-facts dt{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.rt-facts dd{margin:2px 0 0;font:600 14px/1.3 var(--font-ui);color:var(--ink);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.rt-actions{display:flex;flex-wrap:wrap;gap:8px}
+#routines-dialog .rt-actions button{font-size:14px}
+#routines-dialog .rt-actions .rt-remove{margin-left:auto}
+#routines-dialog .rt-link{font-size:13px;font-weight:600}
+#routines-dialog .cx-msg{font-size:13px}
+.rt-hook{display:grid;gap:10px;padding:12px;border:0;border-radius:var(--r-md);background:var(--paper-2)}
+#routines-dialog .rt-hook-note{margin:0;font-size:13px;line-height:1.45;color:var(--ink)}
+.rt-hook-row{display:grid;gap:4px;min-width:0}
+.rt-hook-label{font-size:12px;font-weight:600;color:var(--muted)}
+.rt-hook-field{display:flex;gap:8px;min-width:0}
+#routines-dialog .rt-hook-input{flex:1 1 auto;min-width:0;margin:0;font:13px ui-monospace,Consolas,monospace}
+#routines-dialog .rt-hook-field button{flex-shrink:0}
+
+/* A briefing's latest result: its first line, the whole text behind Read it all, and Listen. */
+.rt-briefing{display:grid;gap:6px;padding:12px;border:0;border-left:4px solid var(--accent);border-radius:var(--r-md);background:var(--paper-2)}
+.rt-briefing-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.rt-briefing-head strong{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+#routines-dialog .rt-listen{font-size:14px;font-weight:600}
+#routines-dialog .rt-briefing-lead{margin:0;font:600 15px/1.4 var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
+.rt-briefing-more summary{display:flex;align-items:center;min-height:var(--tap);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer}
+#routines-dialog .rt-briefing-text{margin:0;font-size:14px;line-height:1.5;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* The form. Fields are 16px so a phone does not zoom in on focus. */
+.rt-form{display:grid;gap:14px}
+#routines-dialog .rt-form-title{margin:0;font:20px/1.2 var(--font-display);overflow-wrap:anywhere}
+#routines-dialog .rt-field{display:grid;gap:6px;min-width:0;margin:0;font-size:13px}
+.rt-field>span{font-weight:600;color:var(--ink)}
+.rt-hint{font-size:12px;line-height:1.4;color:var(--muted)}
+#routines-dialog .rt-field :is(input,select,textarea){margin:0;font-size:16px}
+.rt-templates{display:flex;flex-wrap:wrap;gap:8px}
+#routines-dialog .rt-template{padding:0 16px;border-radius:var(--r-pill);font-size:14px}
+#routines-dialog .rt-template[aria-pressed=true]{border-color:var(--accent);background:var(--paper-2);font-weight:600}
+.rt-when-set{display:grid;gap:10px;min-width:0;margin:0;padding:10px 12px 12px;border:1px solid var(--line);border-radius:var(--r-md)}
+.rt-when-set legend{padding:0 4px;font-size:13px;font-weight:600}
+.rt-when-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-width:0}
+#routines-dialog .rt-inline{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:100%;margin:0;font-size:14px}
+#routines-dialog .rt-inline :is(select,input){display:inline-block;width:auto;min-width:0;max-width:100%;margin:0;font-size:16px}
+#routines-dialog .rt-preview{margin:0;font-size:13px;line-height:1.45;color:var(--ink)}
+.rt-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#routines-dialog .rt-check{display:flex;align-items:center;gap:12px;min-height:var(--tap);margin:0;font-size:14px;cursor:pointer}
+#routines-dialog .rt-error:empty{display:none}
+.rt-form-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+
+@media(max-width:600px){
+  #routines-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  #routines-dialog .rt-top{margin:0 -16px;padding:max(8px,env(safe-area-inset-top,0px)) 16px 4px}
+  .rt-facts{grid-template-columns:minmax(0,1fr)}
+  .rt-facts>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .rt-facts dd{margin:0;text-align:right}
+  .rt-pair{grid-template-columns:minmax(0,1fr)}
+  #routines-dialog .rt-form-actions button{flex:1 1 0}
+}

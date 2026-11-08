@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Non-edge-to-edge (targetSdk 34): the framework keeps content clear of the status and navigation bars. -->
+    <style name="Theme.Clowder" parent="android:Theme.DeviceDefault.Light">
+        <item name="android:statusBarColor">@color/cream</item>
+        <item name="android:navigationBarColor">@color/cream</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowBackground">@color/cream</item>
+        <item name="android:colorAccent">@color/green</item>
+    </style>
+</resources>

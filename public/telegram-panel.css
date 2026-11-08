@@ -1,0 +1,32 @@
+/* Telegram (telegram-panel.js): a centred dialog on desktop and a full-screen page with a back pill on phones, like AI models.
+   Colours are the theme tokens in style.css; sections, the status dot, messages and the open link reuse the connectors panel's cx- classes. */
+#telegram-dialog{width:min(560px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:88dvh;margin:auto;padding:0 20px 20px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
+#telegram-dialog [hidden]{display:none!important}
+#telegram-dialog .tg-top{position:sticky;top:0;z-index:2;gap:8px;min-height:56px;margin:0 -20px;padding:8px 12px 4px 20px;background:var(--paper)}
+#telegram-dialog h2{margin:2px 0 6px;font:26px/1.15 var(--font-display)}
+#telegram-dialog .tg-lede{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
+.tg-body{display:grid;gap:12px}
+#telegram-dialog .tg-status{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+#telegram-dialog .cx-msg{font-size:13px}
+#telegram-dialog .tg-line{margin:0;font-size:14px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+#telegram-dialog .tg-hint{margin:0;font-size:13px;line-height:1.45;color:var(--muted)}
+.tg-steps{margin:0;padding-left:20px;font-size:14px;line-height:1.5;color:var(--ink)}
+.tg-steps li+li{margin-top:4px}
+.tg-token-box{display:grid;gap:10px;justify-items:start}
+.tg-token-box>.tg-token-form{justify-self:stretch}
+.tg-token-form{display:flex;gap:8px;min-width:0}
+#telegram-dialog .tg-token{flex:1 1 auto;min-width:0;margin:0;font:16px ui-monospace,Consolas,monospace}
+#telegram-dialog .tg-step button{font-size:14px;justify-self:start;flex-shrink:0;white-space:nowrap}
+.tg-code-box{display:grid;gap:10px;padding:14px;border:0;border-radius:var(--r-md);background:var(--paper-2)}
+#telegram-dialog .tg-code{margin:0;font:600 26px/1.2 ui-monospace,Consolas,monospace;letter-spacing:.06em;color:var(--ink);white-space:nowrap}
+.tg-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+#telegram-dialog .tg-open{margin:0}
+#telegram-dialog .tg-wait{margin:0;font-size:13px;color:var(--accent)}
+
+@media(max-width:600px){
+  #telegram-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  #telegram-dialog .tg-top{margin:0 -16px;padding:max(8px,env(safe-area-inset-top,0px)) 16px 4px}
+  .tg-token-form{flex-wrap:wrap}
+  #telegram-dialog .tg-code{font-size:21px;letter-spacing:.02em}
+  .tg-token-form .primary{flex:1 1 100%}
+}

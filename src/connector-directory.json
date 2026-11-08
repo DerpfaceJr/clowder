@@ -1,0 +1,334 @@
+[
+ {
+  "id": "context7",
+  "name": "Context7",
+  "description": "Up-to-date library and framework documentation.",
+  "url": "https://mcp.context7.com/mcp",
+  "type": "http",
+  "auth": "none",
+  "trust": "read-only",
+  "homepage": "https://context7.com"
+ },
+ {
+  "id": "deepwiki",
+  "name": "DeepWiki",
+  "description": "Ask questions about public GitHub repositories.",
+  "url": "https://mcp.deepwiki.com/mcp",
+  "type": "http",
+  "auth": "none",
+  "trust": "read-only",
+  "homepage": "https://deepwiki.com"
+ },
+ {
+  "id": "huggingface",
+  "name": "Hugging Face",
+  "description": "Search models, datasets, Spaces and papers.",
+  "url": "https://huggingface.co/mcp",
+  "type": "http",
+  "auth": "none",
+  "trust": "read-only",
+  "homepage": "https://huggingface.co"
+ },
+ {
+  "id": "cloudflare-docs",
+  "name": "Cloudflare Docs",
+  "description": "Search Cloudflare’s developer documentation.",
+  "url": "https://docs.mcp.cloudflare.com/mcp",
+  "type": "http",
+  "auth": "none",
+  "trust": "read-only",
+  "homepage": "https://developers.cloudflare.com"
+ },
+ {
+  "id": "linear",
+  "name": "Linear",
+  "description": "Issues, projects and cycles.",
+  "url": "https://mcp.linear.app/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://linear.app"
+ },
+ {
+  "id": "notion",
+  "name": "Notion",
+  "description": "Pages, databases and your workspace’s notes.",
+  "url": "https://mcp.notion.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://notion.so"
+ },
+ {
+  "id": "atlassian",
+  "name": "Atlassian",
+  "description": "Jira issues and Confluence pages.",
+  "url": "https://mcp.atlassian.com/v1/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://atlassian.com"
+ },
+ {
+  "id": "asana",
+  "name": "Asana",
+  "description": "Tasks, projects and assignments.",
+  "url": "https://mcp.asana.com/v2/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://asana.com"
+ },
+ {
+  "id": "monday",
+  "name": "monday.com",
+  "description": "Boards, items and updates.",
+  "url": "https://mcp.monday.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://monday.com"
+ },
+ {
+  "id": "intercom",
+  "name": "Intercom",
+  "description": "Conversations and customer contacts.",
+  "url": "https://mcp.intercom.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://intercom.com"
+ },
+ {
+  "id": "hubspot",
+  "name": "HubSpot",
+  "description": "CRM contacts, companies and deals.",
+  "url": "https://mcp.hubspot.com",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://hubspot.com"
+ },
+ {
+  "id": "sentry",
+  "name": "Sentry",
+  "description": "Errors, issues and stack traces.",
+  "url": "https://mcp.sentry.dev/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://sentry.io"
+ },
+ {
+  "id": "github",
+  "name": "GitHub",
+  "description": "Repositories, issues and pull requests. Needs a personal access token.",
+  "url": "https://api.githubcopilot.com/mcp/",
+  "type": "http",
+  "auth": "token",
+  "homepage": "https://github.com/settings/tokens",
+  "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo,workflow,read:org&description=Clowder",
+  "tokenHelp": "GitHub opens with the right boxes ticked. Scroll down, click Generate token, copy it and paste it here.",
+  "headers": {
+   "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+  }
+ },
+ {
+  "id": "gitlab",
+  "name": "GitLab",
+  "description": "Projects, merge requests and issues.",
+  "url": "https://gitlab.com/api/v4/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://gitlab.com"
+ },
+ {
+  "id": "vercel",
+  "name": "Vercel",
+  "description": "Projects, deployments and logs.",
+  "url": "https://mcp.vercel.com",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://vercel.com"
+ },
+ {
+  "id": "supabase",
+  "name": "Supabase",
+  "description": "Databases, tables and edge functions.",
+  "url": "https://mcp.supabase.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://supabase.com"
+ },
+ {
+  "id": "neon",
+  "name": "Neon",
+  "description": "Serverless Postgres projects and branches.",
+  "url": "https://mcp.neon.tech/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://neon.tech"
+ },
+ {
+  "id": "figma",
+  "name": "Figma",
+  "description": "Design files, components and tokens.",
+  "url": "https://mcp.figma.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://figma.com"
+ },
+ {
+  "id": "canva",
+  "name": "Canva",
+  "description": "Designs and brand assets.",
+  "url": "https://mcp.canva.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://canva.com"
+ },
+ {
+  "id": "webflow",
+  "name": "Webflow",
+  "description": "Sites, pages and CMS collections.",
+  "url": "https://mcp.webflow.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://webflow.com"
+ },
+ {
+  "id": "wix",
+  "name": "Wix",
+  "description": "Sites, stores and bookings.",
+  "url": "https://mcp.wix.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://wix.com"
+ },
+ {
+  "id": "stripe",
+  "name": "Stripe",
+  "description": "Payments, customers and invoices.",
+  "url": "https://mcp.stripe.com",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://stripe.com"
+ },
+ {
+  "id": "paypal",
+  "name": "PayPal",
+  "description": "Invoices, orders and transactions.",
+  "url": "https://mcp.paypal.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://paypal.com"
+ },
+ {
+  "id": "square",
+  "name": "Square",
+  "description": "Payments, catalog and orders.",
+  "url": "https://mcp.squareup.com/mcp",
+  "type": "http",
+  "auth": "oauth",
+  "homepage": "https://squareup.com"
+ },
+ {
+  "id": "google-workspace",
+  "name": "Google Workspace (trial)",
+  "description": "Gmail, Calendar, Drive and Docs for one Google account, through your own Google client. Cats draft email by default; sending asks first. Needs Python with uv (uvx) on this computer.",
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+   "workspace-mcp@2.3.0",
+   "--single-user",
+   "--tool-tier",
+   "core",
+   "--tools",
+   "gmail",
+   "calendar",
+   "drive",
+   "docs"
+  ],
+  "env": {
+   "GOOGLE_OAUTH_CLIENT_ID": "${OAUTH_CLIENT_ID}",
+   "GOOGLE_OAUTH_CLIENT_SECRET": "${OAUTH_CLIENT_SECRET}",
+   "USER_GOOGLE_EMAIL": "${OAUTH_EMAIL}",
+   "WORKSPACE_MCP_CREDENTIALS_DIR": "${OAUTH_CREDENTIALS_DIR}"
+  },
+  "auth": "oauth",
+  "client": "google",
+  "scopes": [
+   "openid",
+   "https://www.googleapis.com/auth/userinfo.email",
+   "https://www.googleapis.com/auth/userinfo.profile",
+   "https://www.googleapis.com/auth/gmail.modify",
+   "https://www.googleapis.com/auth/gmail.compose",
+   "https://www.googleapis.com/auth/gmail.send",
+   "https://www.googleapis.com/auth/calendar",
+   "https://www.googleapis.com/auth/drive",
+   "https://www.googleapis.com/auth/documents"
+  ],
+  "effects": {
+   "send_gmail_message": "public",
+   "draft_gmail_message": "write"
+  },
+  "trial": true,
+  "version": "2.3.0",
+  "license": "MIT",
+  "source": "https://github.com/taylorwilsdon/google_workspace_mcp",
+  "needs": "uvx",
+  "homepage": "https://workspacemcp.com"
+ },
+ {
+  "id": "ms-365",
+  "name": "Microsoft 365 (trial)",
+  "description": "Outlook mail, calendar and OneDrive for one Microsoft account, through your own app registration. Cats draft email by default; sending asks first. Needs Node.js (npx).",
+  "type": "stdio",
+  "command": "npx",
+  "args": [
+   "-y",
+   "@softeria/ms-365-mcp-server@0.179.1",
+   "--enabled-tools",
+   "mail|draft|calendar|drive"
+  ],
+  "env": {
+   "MS365_MCP_OAUTH_TOKEN": "${OAUTH_ACCESS_TOKEN}"
+  },
+  "auth": "oauth",
+  "client": "microsoft",
+  "scopes": [
+   "openid",
+   "profile",
+   "email",
+   "offline_access",
+   "User.Read",
+   "Mail.ReadWrite",
+   "Mail.Send",
+   "Calendars.ReadWrite",
+   "Files.ReadWrite"
+  ],
+  "effects": {
+   "send-mail": "public",
+   "send-draft-message": "public",
+   "reply-mail-message": "public",
+   "reply-all-mail-message": "public",
+   "forward-mail-message": "public",
+   "create-draft-email": "write",
+   "create-reply-draft": "write",
+   "create-reply-all-draft": "write",
+   "create-forward-draft": "write"
+  },
+  "trial": true,
+  "version": "0.179.1",
+  "license": "MIT",
+  "source": "https://github.com/Softeria/ms-365-mcp-server",
+  "needs": "npx",
+  "homepage": "https://github.com/Softeria/ms-365-mcp-server"
+ },
+ {
+  "id": "composio",
+  "name": "Composio (managed, cloud)",
+  "description": "Hundreds of apps through one managed sign-in. Opt-in: your sign-ins and every tool call and result pass through Composio's cloud. Paste the consumer key from Composio's dashboard.",
+  "url": "https://connect.composio.dev/mcp",
+  "type": "http",
+  "auth": "token",
+  "headers": {
+   "x-consumer-api-key": "${COMPOSIO_CONSUMER_KEY}"
+  },
+  "tokenHelp": "Composio dashboard, Install, MCP card: copy the consumer key.",
+  "managed": "cloud",
+  "homepage": "https://composio.dev"
+ }
+]

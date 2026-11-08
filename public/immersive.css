@@ -1,0 +1,924 @@
+body.immersive{height:100dvh;overflow:hidden;padding:0;display:block}
+/* --press: the chrome's pressed scale. Reduced motion keeps it at 1, so a press is a colour change only. */
+:root{--press:.97}@media(prefers-reduced-motion:reduce){:root{--press:1}}
+:root{--pad:16px;--edge:10px;--chrome-x:16px;--header-h:56px;--header-top:max(12px,env(safe-area-inset-top));--dock-h:64px;--dock-stack:calc(max(10px,env(safe-area-inset-bottom)) + 72px);--sheet-top:calc(var(--header-top) + var(--header-h) + var(--space-4))}
+@media(max-width:1100px){:root{--chrome-x:var(--edge);--header-top:max(10px,env(safe-area-inset-top))}}
+.immersive main{position:fixed;inset:0;display:block;height:100dvh;min-height:0;padding:0}
+.immersive main>.world{position:absolute;inset:0;display:block;width:100%;height:100%;border:0;border-radius:0}
+.immersive #canvas-wrap{position:absolute;inset:0;min-height:0;height:100%}
+/* Header: one 56px bar. The brand mark, one status line (the connection dot, then what the town is doing), Money and AI, the menu.
+   Every right-hand control sits in .header-actions, so the desktop shell can keep the caption buttons' room with that box's margin. */
+.immersive header{position:fixed;z-index:20;top:var(--header-top);left:var(--chrome-x);right:var(--chrome-x);height:var(--header-h);display:flex;align-items:center;justify-content:flex-start;gap:var(--space-4);padding:0 var(--space-2);border:0;border-radius:var(--r-lg);background:var(--paper);box-shadow:var(--e2)}
+.immersive .brand{display:flex;align-items:center;gap:var(--space-2);flex:none;min-width:var(--tap);min-height:var(--tap);padding:0 var(--space-2) 0 var(--space-1);border-radius:var(--r-md);color:var(--ink);font:600 var(--text-xl)/1.1 var(--font-display);letter-spacing:0;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.immersive .brandmark{width:36px;height:36px;border-radius:var(--r-sm);flex:none}
+.immersive .brand small{display:block;margin-top:2px;font:600 var(--text-xs)/1.2 var(--font-ui);letter-spacing:.14em;color:var(--ink-2)}
+.immersive header .world-life{display:flex;align-items:center;justify-content:flex-start;gap:var(--space-2);flex:1 1 auto;min-width:0;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:none;color:var(--ink-2);font:500 var(--text-sm)/1.3 var(--font-ui)}
+.immersive #world-activity{display:block;min-width:0;max-width:none;padding:0;border:0;border-radius:0;background:none;color:inherit;font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The connection is the status line's dot; its words stay in the page for screen readers, clipped. A viewer also sees them. */
+.immersive #connection{position:static;display:inline-flex;align-items:center;gap:var(--space-2);flex:none;width:auto;height:auto;max-width:8px;margin:0;padding:0;overflow:hidden;clip-path:none;border-radius:0;background:none;white-space:nowrap;color:transparent;font:500 var(--text-xs)/1.2 var(--font-ui)}
+.immersive #connection::before{content:'';flex:none;width:8px;height:8px;margin:0;border-radius:var(--r-pill);background:var(--ink-3)}
+.immersive #connection[data-state=up]::before{background:var(--accent)}
+.immersive #connection[data-state=down]::before{background:var(--danger)}
+.immersive.viewer #connection{max-width:none;color:var(--ink)}
+.immersive .header-actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto;flex:none}
+/* Worlds lives in the ☰ menu (worlds-panel.js registers it there); its old chip stays in the page for that script, hidden. */
+.immersive header .worlds-chip{display:none}
+.immersive :is(.treasury-hud,.models-chip){display:flex;align-items:center;gap:var(--space-2);min-height:var(--tap);max-width:240px;padding:0 var(--space-3);border:0;border-radius:var(--r-pill);background:var(--paper);box-shadow:var(--e1);color:var(--ink);font:600 var(--text-sm)/1.2 var(--font-ui);text-align:left;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.immersive :is(.treasury-gem,.models-gem){display:block;flex:none;width:18px;height:18px;color:var(--accent)}
+.immersive .treasury-text{display:block;min-width:0}
+.immersive .treasury-hud small{display:block;margin:0;font:500 var(--text-xs)/1.2 var(--font-ui);letter-spacing:0;text-transform:none;color:var(--ink-2)}
+.immersive .treasury-hud strong{display:block;margin:0;overflow:hidden;text-overflow:ellipsis;font:600 var(--text-sm)/1.25 var(--font-ui);font-variant-numeric:lining-nums tabular-nums}
+.immersive .menu-toggle{display:grid;place-items:center;flex:none;width:var(--tap);height:var(--tap);min-width:var(--tap);min-height:var(--tap);padding:0;border:0;border-radius:var(--r-pill);background:transparent;color:var(--ink);-webkit-tap-highlight-color:transparent}
+.immersive .menu-toggle svg{display:block;width:22px;height:22px}
+.immersive :is(.brand,.treasury-hud,.models-chip,.menu-toggle){transition:scale var(--dur-quick) var(--ease-out),background-color var(--dur-base) var(--ease-out)}
+.immersive :is(.brand,.treasury-hud,.models-chip,.menu-toggle):active{scale:var(--press)}
+@media(hover:hover){.immersive :is(.brand,.treasury-hud,.models-chip,.menu-toggle):hover{background:var(--paper-2)}}
+@media(max-width:1199px){.immersive .brand small{display:none}}
+.immersive .world-title{position:absolute;top:84px;left:16px;right:auto;max-width:calc(100% - 32px);padding:0;pointer-events:none}.immersive .world-title>div:first-child{display:none}.immersive .world-settings{pointer-events:auto}.immersive .pill{display:none}
+@media(min-width:1101px){
+.immersive .residents,.immersive .inspector,.immersive .season,.immersive .projects,.immersive .quests{position:fixed;z-index:25;top:var(--sheet-top);bottom:76px;height:auto;display:flex;flex-direction:column;border:0;border-radius:var(--r-lg);box-shadow:var(--e3);background:var(--paper)}
+.immersive .residents{left:16px;width:260px;padding:12px;overflow-y:auto}
+.immersive .inspector,.immersive .season,.immersive .projects,.immersive .quests{right:16px;width:380px;min-height:0}
+
+/* The diary is a flex column: its header stays put and the list (.panel-body) scrolls inside it. */
+.immersive .world #diary-panel{position:fixed;z-index:26;bottom:88px;left:16px;width:448px;height:var(--diary-h);max-height:none;display:flex;flex-direction:column;overflow:hidden;border:0;border-radius:var(--r-lg);box-shadow:var(--e3);padding:0 var(--pad) var(--pad)}
+@media(max-height:600px){.immersive .residents,.immersive .inspector,.immersive .season,.immersive .projects,.immersive .quests{top:80px;bottom:76px}}
+}
+.immersive .residents nav{flex-direction:column!important;overflow-x:visible;flex-shrink:0}.immersive .residents .cat-button{width:100%;min-width:0}.immersive .residents .panel-body>.section-heading{display:flex;float:none;height:auto;margin:4px 0}.immersive .residents .panel-body>.section-heading>span,.immersive .residents .panel-body>.wide{display:block}.immersive .residents .panel-body>.muted,.immersive .town-note{display:none}.immersive .residents .panel-body>.wide{margin-top:12px}.panel-tools{display:flex;align-items:center;justify-content:space-between;padding:0 4px;font-size:11px;letter-spacing:1.6px;flex-shrink:0}.panel-tools button{font-size:24px;border:0;background:none;padding:0;width:44px}.inspector .panel-tools{padding:0 12px;border-bottom:1px solid var(--line)}
+.immersive .panel[hidden],.immersive #diary-panel[hidden]{display:none!important}
+.immersive #cat-header{padding:10px 16px}.immersive #cat-header h2{font-size:21px}.immersive .mode{margin-bottom:8px}.immersive .tabs button{padding:10px 0}.immersive .tab-pane{min-height:70px}.immersive #chat-form{flex-shrink:0}.immersive .home-summary{flex-shrink:0}
+/* Camera cluster: one group of 44px buttons (zoom in and out, town square, find a cat, edit) in a single capsule over the world. */
+.immersive .world-controls{position:absolute;z-index:24;right:var(--chrome-x);bottom:var(--dock-stack);left:auto;top:auto;transform:none;margin:0;padding:var(--space-1);display:flex;flex-direction:column;gap:var(--space-1);border:0;border-radius:var(--r-pill);background:var(--paper);box-shadow:var(--e2);white-space:nowrap}.immersive .world-hint{display:none}
+.immersive .world-controls button{display:grid;place-items:center;width:var(--tap);height:var(--tap);min-width:var(--tap);min-height:var(--tap);padding:0;border:0;border-radius:var(--r-pill);background:transparent;box-shadow:none;color:var(--ink);-webkit-tap-highlight-color:transparent}
+.immersive .cam-btn svg{display:block;width:20px;height:20px}
+.immersive .cam-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.immersive .world-controls #edit-toggle[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+.immersive .world-controls button{transition:scale var(--dur-quick) var(--ease-out),background-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out)}
+.immersive .world-controls button:active{scale:var(--press)}
+@media(hover:hover){.immersive .world-controls button:not([aria-pressed=true]):hover{background:var(--paper-2)}}
+/* Dock: Lucide icons with 12px labels. Desktop: one floating pill row, the open panel's item filled. Phones and tablets: icon over
+   label, the open item's icon in a filled pill. The Needs you badge is a count; the Chat badge is a dot until a count is written into it. */
+.immersive .town-dock{display:flex;position:fixed;z-index:30;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);gap:var(--space-1);padding:var(--space-1);border:0;border-radius:var(--r-pill);background:var(--paper);box-shadow:var(--e2)}.town-dock button{border:0;background:none;white-space:nowrap}.town-dock button[hidden]{display:none}
+.immersive .town-dock button{position:relative;display:flex;align-items:center;gap:var(--space-2);min-height:var(--tap);padding:0 var(--space-4) 0 var(--space-3);border-radius:var(--r-pill);background:transparent;color:var(--ink);font:600 var(--text-xs)/1.2 var(--font-ui);-webkit-tap-highlight-color:transparent}
+.immersive .town-dock .dock-ico{display:grid;place-items:center;flex:none}
+.immersive .town-dock .dock-ico svg{display:block;width:20px;height:20px}
+.immersive .town-dock button[aria-expanded=true]{background:var(--accent);color:var(--on-accent)}
+.immersive .town-dock :is(#quests-badge,.dock-badge){position:absolute;top:var(--space-1);right:auto;left:calc(var(--space-3) + 12px);min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-pill);background:var(--danger);color:var(--on-accent);font:700 var(--text-xs)/18px var(--font-ui);font-variant-numeric:lining-nums tabular-nums;text-align:center;outline:2px solid var(--paper)}
+.immersive .town-dock :is(#decision-badge,.dock-badge):empty{min-width:0;width:10px;height:10px;padding:0}
+.immersive .town-dock :is(button,.dock-ico){transition:scale var(--dur-quick) var(--ease-out),background-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out)}
+.immersive .town-dock button:active{scale:var(--press)}
+@media(hover:hover){.immersive .town-dock button:not([aria-expanded=true]):hover{background:var(--paper-2)}}
+@media(hover:hover) and (max-width:1100px){.immersive .town-dock button:not([aria-expanded=true]):hover{background:transparent}.immersive .town-dock button:not([aria-expanded=true]):hover .dock-ico{background:var(--paper-2)}}
+/* Glass on exactly three surfaces that float over the world: the header, the dock and the camera cluster. 72% paper with a 14px
+   blur, or 94% paper where the browser has no backdrop blur. Panels, sheets and dialogs are solid paper. Text straight on the
+   glass is --ink, not --ink-2, because the glass darkens over the night scene. */
+.immersive :is(header,.town-dock,.world-controls){background:var(--glass);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.immersive :is(header,.town-dock,.world-controls){background:var(--glass-solid)}}
+.immersive header .world-life,.immersive .brand small{color:var(--ink)}
+.immersive footer{display:none}.immersive #notice{position:fixed;z-index:40;top:76px;left:50%;transform:translateX(-50%);max-width:90%;min-height:0;padding:0}.immersive #notice:not(:empty){padding:var(--space-3) var(--space-4);border:0;border-radius:var(--r-md);background:var(--needs);color:var(--needs-ink);box-shadow:var(--e2);font-size:var(--text-sm);line-height:1.4}
+.treasury-dialog-title{display:flex;align-items:center;justify-content:space-between}.treasury-balance{font:30px var(--font-display,Georgia,serif)!important;color:#596c55!important;overflow-wrap:anywhere}#treasury-source{font-size:11px}#treasury-note:empty{display:none}#treasury-error{color:#a24332}.immersive .world-label.treasury-label{--label-bg:#eee5fff2;color:#685780}
+.immersive.connecting .treasury-hud,.immersive.unpaired .treasury-hud,.immersive.unpaired .town-dock{display:none}
+@media(max-height:600px){.immersive .inspector .mode,.immersive .inspector .home-summary,.immersive #cat-header p{display:none}.immersive #cat-header{padding:5px 14px}.immersive #cat-header .avatar{width:28px;height:28px;font-size:17px}.immersive .panel-tools{min-height:32px}.immersive .panel-tools button{min-height:32px}}
+
+.immersive .tabs{gap:15px}.immersive .tabs button{font-size:11px}#council .task-card{margin-top:12px}#council p{overflow-wrap:anywhere}#council-dialog fieldset{border:1px solid var(--line);border-radius:12px;max-height:230px;overflow:auto}#council-dialog legend{font-size:12px}#council-dialog .evidence-choice{display:flex;gap:10px;align-items:flex-start;font-size:12px}#council-dialog .evidence-choice input{width:20px;min-height:20px;margin:0;flex-shrink:0}#council-dialog .evidence-choice small{display:block;overflow-wrap:anywhere;color:var(--muted);font-size:11px;margin-top:4px}#council-error{color:#a24332}
+
+.season{overflow-y:auto;padding:0 0 14px}.season .panel-tools{padding:0 12px;border-bottom:1px solid var(--line);min-height:44px;margin-bottom:6px}.season>.panel-tools{position:sticky;top:0;background:#fffdf8;z-index:1}
+#season-body{padding:0 16px}#season-status{font-size:11px;color:#a24332;margin:8px 16px 0}#season-status[hidden]{display:none}
+.season-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-top:8px}.season-title{font:19px var(--font-display,Georgia,serif);overflow-wrap:anywhere}
+.season-check{font-size:11px;border-radius:20px;padding:4px 9px;background:#e9eee2;color:#40523e;white-space:nowrap}.season-check.bad{background:#fbede8;color:#a24332}
+.season-bar{height:6px;border-radius:4px;background:#eee9d9;overflow:hidden;margin:12px 0 6px}.season-bar i{display:block;height:100%;background:#8ba07a}
+.season #season-body p.muted{font-size:11px;margin:0}
+.season-balance{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;margin:14px 0 4px}.season-balance strong{font:32px var(--font-display,Georgia,serif);color:#526854;overflow-wrap:anywhere}.season-balance small{font-size:11px;color:var(--muted)}
+.season-delta{font-size:12px;font-weight:600;width:100%}.season-delta.up{color:#40703e}.season-delta.down{color:#a24332}
+.season-flow{font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+.season-section{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}.season-heading{font-size:11px;letter-spacing:1.5px;color:#6b6657;font-weight:600;margin:0 0 8px}
+.season-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.season-item{padding:9px 10px;background:#f6f3eb;border-radius:10px;font-size:12px;overflow-wrap:anywhere}.season-item-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.season-item small,.season-action small{display:block;color:var(--muted);font-size:11px;margin-top:3px;line-height:1.4}
+.season-state{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#5f6656;white-space:nowrap}.season-state.open{color:#40703e}
+.season-action{padding:8px 10px;border-left:3px solid #8ba07a;background:#f6f3eb;border-radius:8px;font-size:12px;overflow-wrap:anywhere}.season-action.bad{border-left-color:#c97a62}.season-action-line{line-height:1.4}
+.season-command{font:11px Consolas,monospace;background:#f6f3eb;border-radius:8px;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0}
+
+#edit-town[aria-pressed=true]{background:#dfe9cf;border-color:#a0ae84}
+/* Edit mode (app.js setEditing, town.js): a frame round the town, a banner, the house toolbar, a dimmed dock. */
+#canvas-wrap::after{content:'';position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 4px #d9a441b3,inset 0 0 40px #d9a44155;opacity:0;transition:opacity .25s}
+#canvas-wrap.editing::after{opacity:1}
+body.editing-town .town-dock{opacity:.55;transition:opacity .2s}
+.edit-pill{position:fixed;z-index:31;top:var(--sheet-top);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;min-height:44px;max-width:calc(100% - 24px);box-sizing:border-box;padding:4px 6px 4px 14px;border:1px solid #c9a14f;border-radius:999px;background:#fffdf5;box-shadow:0 5px 18px #26372926}
+.edit-pill[hidden]{display:none}
+.edit-pill button{min-height:44px;min-width:44px;padding:0 14px;border-radius:999px;border:1px solid #4d7a4a;background:#4d7a4a;color:#fff;font-weight:600}
+.edit-pill span{font-size:13px;line-height:1.25}
+.edit-bar{position:absolute;z-index:31;left:0;top:0;display:flex;gap:4px;padding:4px;border:1px solid #c9a14f;border-radius:999px;background:#fffdf5f7;box-shadow:0 6px 20px #26372926;white-space:nowrap;transform:translateY(calc(-100% - 14px))}
+.edit-bar[hidden]{display:none}
+.edit-bar button{min-height:44px;min-width:44px;padding:0 12px;border:0;border-radius:999px;background:none;color:#4b473d;font:600 13px/1 var(--font-ui,Inter,"Segoe UI",sans-serif)}
+.edit-bar button:focus-visible{background:#f1ead6}
+@media(hover:hover){.edit-bar button:hover{background:#f1ead6}}
+.edit-bar button,.edit-pill button,.scroll-latest{-webkit-tap-highlight-color:transparent;transition:scale var(--dur-quick) var(--ease-out),background-color var(--dur-base) var(--ease-out)}
+.edit-bar button:active,.edit-pill button:active,.scroll-latest:active{scale:var(--press)}
+#edit-bar-done{color:#7a6a45}
+.cat-row{display:flex;align-items:stretch;gap:6px}
+.immersive .residents .cat-row .cat-button{width:auto;flex:1 1 0;min-width:0}
+/* The Studio takes the right side (or the lower sheet): the town's chrome that would sit under it goes. The canvas stays. */
+body.studio-open :is(.residents,.inspector,.season,.activity,.projects,.quests,#cat-settings-flyout,.town-dock,.world-controls,.world-hint,.world-title,#labels,#edit-pill,#edit-bar,#diary-panel,#quest-notice){display:none!important}
+.editing .world-label{pointer-events:none}
+
+
+/* AI models settings dialog: a summary strip, then one provider at a time (a left list on desktop, a scrolling tab row on phones). */
+#models-open[hidden]{display:none!important}
+#models-dialog{width:min(900px,96vw);max-height:92dvh;overflow:hidden}
+#models-dialog[open]{display:flex;flex-direction:column}
+#models-body{display:flex;flex-direction:column;gap:10px;margin-top:12px;flex:1 1 auto;min-height:0}
+#models-body [hidden]{display:none!important}
+#models-error{color:#a24332;font-size:12px;margin:0}#models-error:empty{display:none}
+.models-summary{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:#fffdf8}
+.models-thinking{margin:0;font-size:13px;line-height:1.4;color:#4b473d;overflow-wrap:anywhere}
+.models-thinking-label{font-size:11px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.models-thinking strong{font:600 15px/1.3 var(--font-display,Georgia,serif);color:#4b473d}
+
+
+
+.models-shell{display:grid;grid-template-columns:190px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px;align-items:stretch;flex:1 1 auto;min-height:0}
+.models-nav{display:grid;gap:4px;align-content:start}
+.models-nav button{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:44px;padding:6px 10px;border:1px solid transparent;border-radius:12px;background:none;color:#4b473d;text-align:left;font-size:13px}
+.models-nav button:hover{background:#f6f3eb}
+.models-nav button.active{background:#fffdf8;border-color:var(--line);box-shadow:inset 3px 0 0 var(--green);font-weight:600}
+.models-nav button:focus-visible,.model-more summary:focus-visible{outline:3px solid #526854;outline-offset:2px}
+.models-nav-icon{font-size:15px;text-align:center;color:#62805a}
+.models-nav-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#b9b29c;flex-shrink:0}
+.model-dot[data-tone=ok]{background:#6f9a5c}
+.model-dot[data-tone=warn]{background:#d19a3a}
+.model-dot[data-tone=off]{background:#b9b29c}
+.models-detail{min-width:0;min-height:0;overflow-y:auto;padding-right:2px}
+.model-card{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fffdf8}
+.model-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.model-card h3{font:18px var(--font-display,Georgia,serif);margin:0}
+.model-card p{font-size:12px;line-height:1.5;margin:6px 0 0;overflow-wrap:anywhere}
+.model-group{margin-top:10px;padding-top:10px;border-top:1px solid #efe9da}
+.model-group-title{margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted)}
+.model-badge{font-size:11px;border-radius:20px;padding:4px 9px;background:#eee9d9;color:#6b6754;white-space:nowrap}
+.model-badge[data-tone=ok]{background:#e9eee2;color:#40523e}
+.model-badge[data-tone=warn]{background:#f5ebd9;color:#8a6428}
+.model-copy{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.model-copy[hidden]{display:none}
+.model-copy code{font:11px Consolas,monospace;background:#f6f3eb;border-radius:8px;padding:8px 10px;overflow-wrap:anywhere}
+.model-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.model-switch{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:12px;position:relative;cursor:pointer}
+.model-login{background:#e9eee2;border-radius:10px;padding:10px;margin-top:8px}
+.model-login p{margin:0}
+.model-login a{display:block;font-size:11px;margin-top:6px}
+.model-form label{display:block;font-size:12px;margin:8px 0 0}
+.model-form .model-error{color:#a24332}
+.model-form .dialog-actions{margin-top:10px;flex-wrap:wrap}
+.model-key{font-family:Consolas,monospace;font-size:12px}
+.model-more{margin-top:8px;font-size:12px}
+.model-more summary{cursor:pointer;display:inline-flex;align-items:center;min-height:32px;color:var(--green);font-weight:600}
+.model-more p{margin:2px 0 0}
+.model-ai label{display:block;margin-top:8px}
+.model-ai .dialog-actions{margin-top:10px}
+/* Phones and small tablets: one row of segmented tabs that scrolls sideways, the details beneath it. */
+@media(max-width:768px){
+#models-dialog[open]{display:block;overflow-y:auto}
+#models-body{display:grid;gap:10px}
+.models-shell{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;flex:none;gap:10px}
+.models-nav{display:flex;gap:2px;overflow-x:auto;padding:3px;border:1px solid var(--line);border-radius:12px;background:#f4efe2;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.models-nav::-webkit-scrollbar{display:none}
+.models-nav button{flex:0 0 auto;grid-template-columns:auto auto auto;gap:6px;min-height:44px;padding:8px 12px;border-color:transparent;border-radius:10px;white-space:nowrap;background:none}
+.models-nav button.active{background:#526854;color:#fff;box-shadow:none;border-color:#526854}
+.models-nav button.active .models-nav-icon{color:#fff}
+.models-nav button.active .model-dot{box-shadow:0 0 0 2px #526854}
+.models-nav-name{overflow:visible}
+.models-detail{min-height:auto;overflow:visible}
+}
+@media(prefers-reduced-motion:reduce){.models-nav button{transition:none}}
+
+/* ===== Compact chrome (phones and tablets, up to 1100px) =====
+   A slim top bar with a ☰ menu, one panel at a time, and the camera and dock kept clear of the world. */
+@keyframes sheet-up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
+.sheet-grip{display:none}
+@media(max-width:1100px){
+#share{max-width:none}
+.immersive .world-title,.immersive .world-hint{display:none}
+.immersive #notice{top:var(--sheet-top);max-width:calc(100% - 2 * var(--edge))}
+
+/* Panels: a right-hand column on tablets, a bottom sheet on phones (below). */
+.immersive :is(.residents,.inspector,.season,.activity,.projects,.quests){position:fixed;z-index:25;top:var(--sheet-top);bottom:var(--dock-stack);left:auto;right:var(--edge);width:min(400px,46vw);height:auto;max-height:none;min-height:0;margin:0;padding:0 14px 14px;display:flex;flex-direction:column;overflow-y:auto;border:0;border-radius:var(--r-lg);background:var(--paper);box-shadow:var(--e3)}
+.immersive .inspector{overflow:hidden}
+.immersive .residents{padding:0 14px 14px}
+.immersive .panel-tools{position:sticky;top:0;z-index:2;background:inherit;min-height:44px}
+.immersive .panel-tools button{width:44px;height:44px}
+.immersive .inspector .panel-tools{position:static}
+.immersive .residents .section-heading{padding-top:12px}
+.immersive .cat-button{min-height:52px}
+.immersive .town-dock{left:var(--edge);right:var(--edge);bottom:max(10px,env(safe-area-inset-bottom));transform:none;justify-content:space-between;gap:var(--space-1);padding:var(--space-1);border-radius:var(--r-lg);min-height:var(--dock-h);box-sizing:border-box}
+.immersive .town-dock button{flex:1 1 0;min-width:0;min-height:56px;flex-direction:column;justify-content:center;gap:var(--space-1);padding:var(--space-1) 2px;line-height:1.1;border-radius:var(--r-md)}
+.immersive .town-dock .dock-ico{width:48px;height:28px;border-radius:var(--r-pill)}
+.immersive .town-dock button[aria-expanded=true]{background:transparent;color:var(--accent-strong)}
+.immersive .town-dock button[aria-expanded=true] .dock-ico{background:var(--accent);color:var(--on-accent)}
+.immersive .town-dock :is(#quests-badge,.dock-badge){top:var(--space-1);left:calc(50% + 10px)}
+}
+
+/* Phones (up to 599px): bottom sheets above the dock, a 5-icon dock, and only the nearest cat labels. */
+@media(max-width:599px){
+.immersive :is(.residents,.inspector,.season,.activity,.projects,.quests){left:0;right:0;top:auto;bottom:var(--dock-stack);width:auto;height:50dvh;padding:0 14px;border:0;border-radius:var(--r-lg) var(--r-lg) 0 0;background:var(--paper);box-shadow:var(--e3);overflow-y:auto}
+.immersive :is(.residents,.inspector,.season,.activity,.projects,.quests)[data-size=full]{top:var(--sheet-top);height:auto}
+.immersive .inspector{overflow:hidden}
+.immersive .inspector .panel-tools{position:static}
+.sheet-grip{display:flex;position:sticky;top:0;z-index:3;align-items:center;justify-content:center;height:24px;margin:0 -14px;flex-shrink:0;background:var(--paper);touch-action:none;cursor:grab}
+.sheet-grip span{width:36px;height:4px;border-radius:var(--r-pill);background:var(--ink-3);opacity:.4}
+.immersive .panel-tools{top:0;background:var(--paper)}
+.immersive .inspector .sheet-grip{position:relative}
+.immersive .world-controls .cam-zoom{display:none}
+body.immersive[data-sheet=half] .world-controls{bottom:calc(var(--dock-stack) + 50dvh + 8px)}
+body.immersive[data-sheet=full] .world-controls{display:none}
+body.immersive[data-sheet=half] #mode-note{display:none}
+.immersive .home-summary{flex-wrap:nowrap;gap:8px}.immersive .home-summary>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.immersive[data-labels=auto] .world-label:not(.selected):not([data-cat=mayor]),body.immersive[data-labels=auto] .world-label.treasury-label{display:none}
+.immersive :is(.eyebrow,.section-heading,.mode label,.mode select,.mode p,.tabs button,.empty,.chat-message .sender,.task-card small,.task-card details,.season-heading,.season-state,.season-check,.season-item small,.season-action small,.season-flow,.season-command,.cat-button small,.home-summary>span,.road-row small,.approval-hint,.approval h3,.evidence-choice small,#composer-hint,#diary li,#diary time,.customize summary,.customize .muted,.model-badge,.town-note p,#season-status,.season #season-body p.muted,.muted,#world-state,#treasury-source){font-size:13px}
+.immersive .mode p{font-size:13px;line-height:1.45}
+.immersive .inspector .mode{margin-bottom:6px}
+.immersive #cat-header .avatar{width:36px;height:36px;font-size:22px}
+.immersive #cat-header{padding:10px 0 8px}
+.immersive #cat-header h2{font-size:20px}
+.immersive .home-summary{padding:0 0 8px}
+.immersive .tabs{gap:18px;padding:0}
+.immersive .tabs button{padding:12px 0;min-height:44px}
+.immersive #chat-form{margin:0 0 10px;padding:8px 10px}
+.immersive #message{font-size:16px}
+.immersive .tab-pane{padding:10px 0}
+.immersive .chat-message .text{font-size:14px}
+.immersive .sheet-grip:focus-visible{outline:none}
+.immersive :is(.residents,.season,.activity) .section-heading{padding-top:4px}
+.immersive .town-dock{bottom:max(8px,env(safe-area-inset-bottom));left:var(--edge);right:var(--edge)}
+}
+
+/* Phones and small tablets (up to 768px): the seven dock items form one row that scrolls sideways. The edge fades are set by app.js (data-fade). */
+@media(max-width:768px){
+.immersive .town-dock{justify-content:flex-start;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding-inline:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x}
+.immersive .town-dock::-webkit-scrollbar{display:none}
+.immersive .town-dock button{flex:0 0 auto;min-width:72px;padding:4px 10px;scroll-snap-align:start}
+.immersive .town-dock[data-fade~=right]{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+.immersive .town-dock[data-fade~=left]{-webkit-mask-image:linear-gradient(90deg,transparent,#000 28px);mask-image:linear-gradient(90deg,transparent,#000 28px)}
+.immersive .town-dock[data-fade~=left][data-fade~=right]{-webkit-mask-image:linear-gradient(90deg,transparent,#000 28px,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
+}
+
+@media(prefers-reduced-motion:no-preference){
+.immersive :is(.residents,.inspector,.season,.activity,.projects,.quests):not([hidden]){animation:sheet-up .22s ease-out}
+.town-menu[open]{animation:sheet-up .22s ease-out}
+}
+@media(prefers-reduced-motion:reduce){
+.immersive :is(.residents,.inspector,.season,.activity,.projects,.quests),.town-menu{animation:none!important;transition:none!important}
+}
+
+/* House names: on shows every label, off shows only the selected cat, auto keeps the phone rule above. */
+body.immersive[data-labels=off] .world-label:not(.selected),body.immersive[data-labels=off] .world-label.treasury-label{display:none}
+.switch-caption{align-self:center;padding:0 8px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b6657;white-space:nowrap}
+
+/* Projects panel: one card per owner request. Progress is a task-count proxy from the server. */
+.projects #projects-body{padding:4px 0 14px}
+.projects #projects-status{font-size:12px;color:#a24332;margin:8px 0 0}
+.projects #projects-status[hidden]{display:none}
+.project-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.project-card{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fffdf8}
+.project-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.project-head h3{font:17px var(--font-display,Georgia,serif);margin:0;min-width:0;overflow-wrap:anywhere}
+.status-chip{font-size:11px;border-radius:20px;padding:4px 9px;white-space:nowrap;flex-shrink:0;background:#eee9d9;color:#6b6754}
+.status-chip[data-tone=working]{background:#e3ecf2;color:#3d5a6c}
+.status-chip[data-tone=attention]{background:#f5ebd9;color:#8a6428}
+.status-chip[data-tone=done]{background:#e9eee2;color:#40523e}
+.status-chip[data-tone=failed]{background:#fbede8;color:#a24332}
+.project-card .progress{height:6px;border-radius:4px;background:#eee9d9;overflow:hidden;margin:10px 0 6px}
+.project-card .progress i{display:block;height:100%;background:#8ba07a}
+.project-counts,.project-meta{font-size:11px;margin:4px 0 0;color:var(--muted);overflow-wrap:anywhere}
+.people{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.person{display:flex;align-items:center;gap:6px;font-size:12px;background:#f6f3eb;border-radius:20px;padding:3px 10px 3px 3px;min-width:0}
+.person .avatar{width:24px;height:24px;font-size:14px}
+.needs-you{display:block;width:100%;margin-top:10px;text-align:left;font-size:12px;min-height:44px;background:#fff4e0;border-color:#e6c98f;color:#7a5620;overflow-wrap:anywhere}
+.project-last{font-size:12px;line-height:1.45;margin:10px 0 0;overflow-wrap:anywhere}
+.project-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.project-actions button{flex:1 1 140px;min-height:44px;font-size:12px}
+.projects .avatar{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;flex-shrink:0;font-size:14px}
+#season-run{margin:8px 16px 0}#season-run[hidden]{display:none}
+.season-run-card{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}.season-run-card:first-child{border-top:0;margin-top:8px}
+.season-run-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.season-field{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.season-field input,.season-field select{font:13px var(--font-ui,Inter,"Segoe UI",sans-serif);padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:#fffdf7;color:inherit;min-width:0;width:100%;box-sizing:border-box}
+.season-field input:disabled,.season-field select:disabled{opacity:.6}
+.season-run-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.season-run-buttons button{font-size:12px;padding:7px 12px;border-radius:20px;border:1px solid var(--line);background:#f6f3eb;cursor:pointer}
+.season-run-buttons button:disabled{opacity:.45;cursor:default}.season-run-buttons button.danger{color:#a24332}
+.season-run-note{font-size:11px;color:var(--muted);margin:8px 0 0;line-height:1.4;overflow-wrap:anywhere}
+.season-run-message{font-size:11px;color:#40703e;margin:6px 0 0}
+@media(max-width:420px){.season-run-form{grid-template-columns:1fr}}
+
+/* Needs you panel (quests-panel.js): attention, most urgent first. Each badge carries its rank's fill and ink and a glyph for what the item
+   is (plain-words.js); a finished one is a ✓ in the theme's green, never a letter grade. */
+:root{--rank-s:#f2c94c;--rank-s-ink:#3b2a00;--rank-a:#b3261e;--rank-a-ink:#ffffff;--rank-b:#6a3fb5;--rank-b-ink:#ffffff;--rank-c:#1f5fa8;--rank-c-ink:#ffffff;--rank-d:#2e7d32;--rank-d-ink:#ffffff;--rank-e:#cfccc2;--rank-e-ink:#2b2a25;--rank-f:#8b5a2b;--rank-f-ink:#ffffff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--rank-s:#e0b03a;--rank-s-ink:#1f1500;--rank-a:#f08a80;--rank-a-ink:#2a0b09;--rank-b:#b59cf0;--rank-b-ink:#1c1033;--rank-c:#86b8ee;--rank-c-ink:#0b1d33;--rank-d:#8fd393;--rank-d-ink:#0d2410;--rank-e:#a9a69d;--rank-e-ink:#141310;--rank-f:#c99468;--rank-f-ink:#1f1208}}
+.quests #quests-body{padding:4px 0 14px}
+.quests #quests-status{font-size:12px;color:#a24332;margin:8px 0 0}
+.quests #quests-status[hidden]{display:none}
+.quest-groups{display:grid;gap:16px}
+.quest-group .rank-heading{font:15px var(--font-display,Georgia,serif);margin:0 0 8px;color:var(--muted)}
+.quest-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.quest{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;border:1px solid var(--line);border-radius:14px;padding:8px 12px;background:#fffdf8}
+.quest-main{min-width:0}
+.quest-title{font:15px var(--font-display,Georgia,serif);margin:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.quest-time{display:block;font-size:11px;margin:4px 0 0;color:var(--muted)}
+.quest-action{min-height:44px;padding:0 14px;font-size:13px}
+.rank-badge{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;font:700 16px/1 var(--font-display,Georgia,serif);flex-shrink:0}
+.rank-badge[data-rank=S]{background:var(--rank-s);color:var(--rank-s-ink)}
+.rank-badge[data-rank=A]{background:var(--rank-a);color:var(--rank-a-ink)}
+.rank-badge[data-rank=B]{background:var(--rank-b);color:var(--rank-b-ink)}
+.rank-badge[data-rank=C]{background:var(--rank-c);color:var(--rank-c-ink)}
+.rank-badge[data-rank=D]{background:var(--rank-d);color:var(--rank-d-ink)}
+.rank-badge[data-rank=E]{background:var(--rank-e);color:var(--rank-e-ink)}
+.rank-badge[data-rank=F]{background:var(--accent);color:var(--paper)}
+.quest-count{position:absolute;top:2px;right:4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rank-a);color:var(--rank-a-ink);font:700 11px/18px var(--font-ui,Inter,"Segoe UI",sans-serif);text-align:center}
+.quest-count[hidden]{display:none}
+.quest-group .quest-action{font-size:13px}
+.town-dock #toggle-quests{position:relative}
+
+/* ===== Spacing pass ===== one inner padding (--pad) for every side panel; its title bar and content share the edge. */
+.immersive :is(.residents,.inspector,.season,.projects,.quests,.activity){padding:0 var(--pad) var(--pad)}
+.immersive .inspector{padding:0;overflow:hidden}
+.immersive .residents{padding:0 var(--pad) var(--pad)}
+.immersive :is(.residents,.season,.projects,.quests) > .panel-tools{margin:0 calc(-1 * var(--pad));padding:0 var(--pad);min-height:56px;background:var(--paper)}
+.immersive .inspector > .panel-tools{margin:0;padding:0 var(--pad);min-height:var(--tap)}
+.immersive .inspector > .panel-tools button{height:var(--tap);min-height:var(--tap)}
+.immersive .sheet-grip{margin:0 calc(-1 * var(--pad))}
+.immersive .town-menu .sheet-grip{margin:0 -16px}
+#season-body{padding:0}
+#season-status,#season-run{margin-left:0;margin-right:0}
+.immersive #quests-body,.immersive #projects-body{padding-left:0;padding-right:0}
+.immersive .quest-group .rank-heading{font-size:15px;color:#6f6a5b;margin:0 0 8px}
+.immersive .quest-list{gap:10px}
+.immersive .quest{padding:8px 12px}
+.immersive .quest-time{font-size:12px}
+.immersive .quest-action{font-size:13px}
+
+.immersive .inspector #cat-header{padding:6px var(--pad) 4px;gap:10px;align-items:center}
+.immersive .inspector #cat-header .avatar{width:28px;height:28px;font-size:17px}
+.immersive .inspector #cat-header h2{font:16px var(--font-display,Georgia,serif);margin:0}
+.immersive .inspector #cat-header p{font-size:12px;margin:0}
+.immersive .inspector .home-summary{flex-shrink:0;padding:0 var(--pad) 4px;gap:6px}
+.immersive .inspector .home-summary>span{font-size:12px}
+.immersive .inspector .home-summary button{font-size:12px;min-height:28px;padding:3px 10px}
+.immersive .inspector .chat-settings{flex-shrink:0;position:relative;margin:0 var(--pad);border-top:1px solid var(--line)}
+.immersive .inspector .chat-settings>summary{cursor:pointer;list-style:none;min-height:28px;display:flex;align-items:center;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600}
+.immersive .inspector .chat-settings>summary::-webkit-details-marker{display:none}
+.immersive .inspector .chat-settings>summary::before{content:'';display:inline-block;width:0;height:0;border-left:6px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;margin-right:8px;transition:transform .15s}
+.immersive .inspector .chat-settings[open]>summary::before{transform:rotate(90deg)}
+.immersive .inspector .chat-settings[open]>summary{color:#4b473d}
+/* Cat settings flyout (public/cat-settings-flyout.js): beside the chat on tablets and desktops, a full-screen sheet on phones. Its controls are the chat's own nodes, moved here. */
+.immersive{--settings-chat-r:16px;--settings-chat-w:380px;--settings-flyout-w:min(400px,calc(100vw - var(--settings-chat-r) - var(--settings-chat-w) - 34px))}
+@media(max-width:1100px){.immersive{--settings-chat-r:var(--edge);--settings-chat-w:min(400px,46vw)}}
+.cat-settings-flyout{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#fffdf8;border-radius:inherit}
+.cat-settings-flyout[hidden]{display:none}
+.cat-settings-flyout .settings-flyout-head{flex-shrink:0;display:flex;align-items:center;gap:8px;min-height:52px;padding:0 10px 0 18px;border-bottom:1px solid var(--line)}
+.cat-settings-flyout .settings-flyout-head h2{flex:1;min-width:0;margin:0;font:600 16px var(--font-ui,Inter,"Segoe UI",sans-serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-settings-flyout .settings-flyout-head button{flex-shrink:0;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;background:none;font-size:24px;line-height:1}
+.cat-settings-flyout .settings-back{display:none;font-size:22px}
+.cat-settings-flyout .settings-body{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:18px;padding:16px 18px 20px;font-size:13px}
+.cat-settings-flyout .settings-body .mode{margin:0;padding:0}
+.cat-settings-flyout .settings-body .ai-suggestion{margin:0}
+.cat-settings-flyout .settings-body .mode p{font-size:12px;margin:6px 0 0}
+body.immersive:has(#inspector-panel[hidden]) #cat-settings-flyout,body.immersive:has(#inspector-panel.memory-expanded) #cat-settings-flyout{display:none}
+@media(max-width:767px){
+ .cat-settings-flyout{position:fixed;z-index:60;inset:auto 0 var(--dock-stack) 0;width:auto;height:auto;max-height:calc(100dvh - var(--sheet-top) - var(--dock-stack));border:1px solid var(--line);border-width:1px 0 0;border-radius:var(--radius-sheet,20px) var(--radius-sheet,20px) 0 0;box-shadow:0 -8px 30px #24332124;backdrop-filter:none;background:#fffdf8}
+ .cat-settings-flyout .settings-close{display:grid}
+}
+.immersive .inspector .tabs{flex-shrink:0;padding:0 var(--pad);gap:18px}
+.immersive .inspector .tabs button{font-size:13px;padding:4px 0;min-height:30px}
+.immersive .inspector .tab-pane{flex:1 1 0;min-height:min(50%,240px);overflow-y:auto;padding:10px var(--pad);margin:0}
+.immersive .inspector .chat-message{font-size:13px;line-height:1.6;margin-bottom:12px}
+.immersive .inspector .chat-message .text{padding:10px 12px}
+.immersive .inspector .task-card{font-size:13px}
+
+/* Chat panel: the log keeps at least 240px. Approvals never shrink to nothing; they are one-line strips that open the full sheet. */
+.immersive .inspector #approvals{flex:0 0 auto;min-height:0;max-height:30%;overflow-y:auto;padding:0 var(--pad)}
+.immersive .inspector .approval{display:flex;align-items:center;gap:8px;margin:4px 0 0;padding:4px 8px;border-radius:12px;background:#f6efe1;font-size:13px}
+.immersive .inspector .approval-open{flex:1 1 auto;min-width:0;min-height:36px;display:flex;align-items:baseline;gap:6px;padding:4px 0;border:0;background:none;text-align:left;font-size:13px;border-radius:8px}
+.immersive .inspector .approval-open strong{flex-shrink:0;font-size:12px;letter-spacing:.5px;color:#a07c45}
+.immersive .inspector .approval-open span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.immersive .inspector .approval-quick{display:flex;gap:6px;flex-shrink:0}
+.immersive .inspector .approval-quick button{min-height:36px;padding:3px 10px;font-size:12px}
+.immersive .inspector .approval-quick [data-quick=answer]{background:var(--green);color:#fff;border-color:var(--green)}
+.reply-as-answer{display:flex;align-items:center;gap:8px;min-height:32px;margin:0 0 4px;font-size:12px}
+.reply-as-answer[hidden]{display:none}
+.reply-as-answer input{width:18px;height:18px;margin:0}
+.viewer .approval-answer{display:none!important}
+
+.immersive .inspector #chat-form{flex-shrink:0;margin:0 var(--pad) 8px;padding:6px 8px}
+.immersive .inspector #message{min-height:36px;height:36px;font-size:13px;line-height:1.5}
+.immersive .inspector #composer-hint{font-size:12px}
+.immersive .inspector #send{min-height:30px;height:30px;width:36px}
+.immersive .inspector{overflow:hidden}
+@media(min-width:1101px) and (max-height:760px){.immersive .inspector .home-summary,.immersive #cat-header p{display:none}}
+@media(max-width:599px){
+ body.immersive[data-sheet=half] .inspector .home-summary,body.immersive[data-sheet=half] .inspector .chat-settings{display:none}
+ body.immersive[data-sheet=half] .inspector .tab-pane{min-height:0}
+}
+
+
+/* ===== Side panels: one rounded shell, one scrolling body, one header row =====
+   The outer box clips (overflow hidden), so its rounded corners never show a scrollbar. Only .panel-body scrolls, inside the panel padding. */
+:root{--diary-h:min(220px,34dvh)}
+.immersive :is(.residents,.inspector,.season,.memorial,.activity,.projects,.quests){overflow:hidden}
+.immersive .panel-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0;list-style:none}
+/* One header grammar for every panel and sheet: 56px, the title on the left in the display face, one centred SVG close (44px) on
+   the right. No hairline: a soft --e1 shadow divides the header from the list once the list has scrolled (scroll-driven, no script);
+   browsers without scroll timelines keep the divider all the time. The chat panel keeps a 44px row until Phase 8 replaces it. */
+.immersive .panel>.panel-tools{flex-shrink:0;position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);min-height:56px;margin:0;padding:0 var(--pad);border-bottom:0;background:var(--paper);color:var(--ink);font:600 var(--text-lg)/1.25 var(--font-display);letter-spacing:0}
+.immersive .panel>.panel-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.immersive :is(.residents,.season,.memorial,.projects,.quests,.activity)>.panel-tools{margin:0 calc(-1 * var(--pad))}
+.immersive .panel>.panel-tools .panel-close{display:grid;place-items:center;flex:none;width:var(--tap);height:var(--tap);min-width:var(--tap);min-height:var(--tap);margin:0 calc(-1 * var(--space-2)) 0 0;padding:0;border:0;border-radius:var(--r-pill);background:transparent;color:var(--ink-2);-webkit-tap-highlight-color:transparent;transition:scale var(--dur-quick) var(--ease-out),background-color var(--dur-base) var(--ease-out)}
+.immersive .panel-close svg{display:block;width:20px;height:20px}
+.immersive .panel>.panel-tools .panel-close:active{scale:var(--press)}
+@media(hover:hover){.immersive .panel>.panel-tools .panel-close:hover{background:var(--paper-2);color:var(--ink)}}
+@keyframes panel-scrolled{to{box-shadow:var(--e1)}}
+@supports (animation-timeline:scroll()){
+ .immersive .panel:has(>.panel-body){timeline-scope:--panel-body}
+ .immersive .panel>.panel-body{scroll-timeline:--panel-body block}
+ .immersive .panel:has(>.panel-body)>.panel-tools{animation:panel-scrolled var(--ease-out) both;animation-timeline:--panel-body;animation-range:0 var(--space-6)}
+}
+@supports not (animation-timeline:scroll()){.immersive .panel:has(>.panel-body)>.panel-tools{box-shadow:var(--e1)}}
+.immersive .inspector>.panel-tools{min-height:var(--tap)}
+@supports not selector(::-webkit-scrollbar){
+ .immersive .panel-body,.immersive .tab-pane,.immersive #approvals,.approval-sheet-body,dialog{scrollbar-width:thin;scrollbar-color:#8fa07f #f3eee2}
+}
+@supports selector(::-webkit-scrollbar){
+ .immersive .panel-body::-webkit-scrollbar,.immersive .tab-pane::-webkit-scrollbar,.immersive #approvals::-webkit-scrollbar,.approval-sheet-body::-webkit-scrollbar,dialog::-webkit-scrollbar{width:8px;height:8px}
+ .immersive .panel-body::-webkit-scrollbar-track,.immersive .tab-pane::-webkit-scrollbar-track,.immersive #approvals::-webkit-scrollbar-track,.approval-sheet-body::-webkit-scrollbar-track{background:#f3eee2;border-radius:8px}
+ .immersive .panel-body::-webkit-scrollbar-thumb,.immersive .tab-pane::-webkit-scrollbar-thumb,.immersive #approvals::-webkit-scrollbar-thumb,.approval-sheet-body::-webkit-scrollbar-thumb{background:#8fa07f;border-radius:8px;border:2px solid #f3eee2}
+ dialog::-webkit-scrollbar-track{margin:18px 0;background:transparent}
+ dialog::-webkit-scrollbar-thumb{background:#8fa07f;border-radius:8px}
+}
+/* Every size: the header row keeps its height and the list takes the rest, so the list never slides under the header. */
+.immersive #diary-panel{display:flex;flex-direction:column;min-height:0}
+.immersive #diary-panel>.panel-tools{position:relative;top:0}
+/* Each entry: the time in its own column, the text wraps in full at 13px with room between the lines. */
+.immersive #diary{margin:0;padding:10px 0 var(--pad);font-size:13px;line-height:1.5;color:#4b473d;display:flex;flex-direction:column;gap:10px;list-style:none}
+.immersive #diary li{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 12px;align-items:start;font-size:13px;line-height:1.5}
+.immersive #diary time{color:#6b6758;font-size:13px;line-height:1.5;white-space:nowrap;padding-top:1px}
+.immersive #diary span{display:block;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;min-width:0;font-size:13px}
+@media(max-width:599px){.immersive #diary li{grid-template-columns:1fr;gap:2px}}
+@media(min-width:1101px){
+ .immersive .residents{width:280px}
+ .immersive main:has(#diary-panel:not([hidden])) .residents{bottom:calc(88px + var(--diary-h) + 12px)}
+ .immersive main:has(#residents-panel[hidden]) .world #diary-panel:not([hidden]){top:var(--sheet-top);bottom:88px;height:auto}
+}
+
+/* Type floor: body 13px, secondary 12px, no panel text below 12px. */
+.immersive .panel-tools{font-size:13px}
+.immersive :is(.eyebrow,.section-heading,.cat-button small,.mode label,.mode p,.chat-message .sender,.task-card small,.task-card details,.home-summary>span,#composer-hint,.season-check,.season-state,.season-item small,.season-action small,.season-flow,.season-field,.status-chip,.project-counts,.project-meta,.quest-time,.switch-caption,.model-badge,.evidence-choice small,.customize summary,.customize .muted,#treasury-source,.view-switch button,.season-command,.season-run-note,.season-run-message,.model-copy code,.approval-hint,.approval h3,.world-label-note,#world-state) {font-size:12px}
+.immersive .tabs button{font-size:13px}
+.immersive .road-row,.immersive .season-item,.immersive .season-action,.immersive .task-card,.immersive .approval{font-size:13px}
+.immersive .project-last,.immersive .person{font-size:13px}
+.brandmark{overflow:hidden}.brandmark img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* Approval sheet: the full question, the suggested options, a text field and the answers. */
+.approval-sheet{position:fixed;inset:auto 0 0 0;margin:0;width:100%;max-width:100%;max-height:88dvh;padding:0;border:0;border-radius:22px 22px 0 0;background:#fffdf8;color:inherit;box-shadow:0 -10px 40px #1f2a2040;overflow:hidden}
+.approval-sheet::backdrop{background:#2b332b59}
+.approval-sheet-body{display:flex;flex-direction:column;gap:12px;max-height:88dvh;padding:16px 18px calc(18px + env(safe-area-inset-bottom));overflow-y:auto;box-sizing:border-box}
+.approval-head{display:flex;align-items:center;gap:12px}
+.approval-head>div{flex:1;min-width:0}
+.approval-head h2{font:22px var(--font-display,Georgia,serif);margin:2px 0 0;overflow-wrap:anywhere}
+.approval-head .avatar{width:44px;height:44px;font-size:24px;flex-shrink:0}
+
+.approval-question{margin:0;max-height:34dvh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.5;padding:12px 14px;border-radius:14px;background:#f6f3eb}
+.approval-answer{display:flex;flex-direction:column;gap:12px}
+.approval-options{display:grid;gap:8px}
+.approval-option{min-height:44px;padding:10px 14px;text-align:left;font-size:15px;background:#fffdf8}
+.approval-custom{display:grid;gap:6px;font-size:13px}
+.approval-custom textarea{width:100%;box-sizing:border-box;min-height:88px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font-size:15px;resize:vertical}
+.approval-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.approval-actions button{min-height:44px;min-width:44px;padding:10px 16px;font-size:15px}
+.approval-actions button:disabled,.approval-option:disabled{opacity:.55}
+.approval-hint{margin:0;font-size:12px;color:var(--muted)}
+#approval-error{margin:0;font-size:12px;color:#a24332}#approval-error:empty{display:none}
+@media(min-width:600px){
+ .approval-sheet{inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(520px,calc(100vw - 32px));border-radius:18px}
+}
+@media(prefers-reduced-motion:no-preference){.approval-sheet[open]{animation:sheet-up .22s ease-out}}
+
+/* Confirm dialog (dialogs.js): cream panel, serif heading, 44px buttons. */
+.confirm-dialog{width:min(420px,calc(100vw - 32px));margin:auto;padding:22px 22px 18px;border:1px solid var(--line);border-radius:18px;background:#fffdf8;color:inherit;box-shadow:0 18px 60px #1f2a2040}
+.confirm-dialog::backdrop{background:#2b332b59}
+.confirm-dialog h2{font:24px var(--font-display,Georgia,serif);margin:4px 0 8px;overflow-wrap:anywhere}
+.confirm-dialog p{margin:0 0 16px;font-size:15px;line-height:1.5}
+.confirm-dialog .confirm-check{display:flex;align-items:center;gap:10px;margin:0 0 16px;font-size:14px;line-height:1.4;cursor:pointer}
+.confirm-dialog .confirm-check[hidden]{display:none}
+.confirm-dialog .confirm-check-input{width:20px;height:20px;min-height:0;margin:0;flex-shrink:0;accent-color:#586e57}
+.confirm-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:0}
+.confirm-actions button{min-height:44px;min-width:44px;padding:10px 16px;font-size:15px}
+.confirm-actions .danger{background:#a24332;border-color:#a24332;color:#fff}
+
+
+/* Night: captions and labels over the canvas keep 4.5:1 text on their light pills. */
+.immersive .world[data-view=night] .world-life,.immersive .world[data-view=night] #world-activity{color:#3d4f38}.immersive .world[data-view=night] .world-label.treasury-label{--label-bg:#f3edff;color:#4b3d63}
+
+/* ===== Camera stack, themed controls and save feedback ===== */
+.immersive .models-chip[hidden],.immersive.connecting .models-chip,.immersive.unpaired .models-chip{display:none}
+@media(max-width:768px){.immersive .models-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.immersive .models-chip{width:44px;padding:0;justify-content:center;gap:0}}
+
+@media(max-width:599px){.immersive .world-controls .cam-zoom{display:none}}
+@media(min-width:1101px){.immersive main:has(> :is(#inspector-panel,#season-panel,#projects-panel,#quests-panel):not([hidden])) .world-controls{right:412px}}
+/* Desktop chat reads wider than the other side panels: 440px, with the settings flyout and world controls beside it. */
+@media(min-width:1101px){.immersive .inspector{width:440px}.immersive{--settings-chat-w:440px}.immersive main:has(> #inspector-panel:not([hidden])) .world-controls{right:472px}}
+@media(min-width:601px) and (max-width:1100px){.immersive main:has(> :is(#residents-panel,#inspector-panel,#season-panel,#projects-panel,#quests-panel):not([hidden])) .world-controls,.immersive main:has(#diary-panel:not([hidden])) .world-controls{right:calc(var(--edge) + min(400px,46vw) + 12px)}}
+
+.model-switch input{position:absolute;left:0;top:0;width:1px;height:1px;min-height:0;margin:0;padding:0;border:0;opacity:0;pointer-events:none}
+.switch-track{position:relative;flex-shrink:0;display:inline-block;width:44px;height:26px;border-radius:999px;background:#d6d0bf;transition:background .18s ease}
+.switch-track::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fffdf8;box-shadow:0 1px 3px #3a3a2a40;transition:transform .18s ease}
+.model-switch input:checked+.switch-track{background:#526854}
+.model-switch input:checked+.switch-track::after{transform:translateX(18px)}
+.model-switch input:focus-visible+.switch-track{outline:3px solid #526854;outline-offset:2px}
+.model-switch input:disabled+.switch-track{opacity:.45}
+.model-switch:has(input:disabled){cursor:default}
+@media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after{transition:none}}
+
+/* Every <select> in the app shares this themed look: cream field, custom chevron, 10px radius, 44px tap target. */
+body.immersive select{appearance:none;-webkit-appearance:none;-moz-appearance:none;display:block;width:100%;min-height:44px;margin:0;padding:10px 40px 10px 12px;border:1px solid var(--line);border-radius:10px;background-color:#faf6ea;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23526854' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px;color:#4b473d;font-size:13px;line-height:1.3;cursor:pointer}
+body.immersive select:focus-visible{outline:3px solid #526854;outline-offset:2px}
+body.immersive select:disabled{opacity:.5;cursor:default}
+
+.model-login .model-open{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:10px;padding:10px 18px;border:1px solid #526854;border-radius:10px;background:#526854;color:#fff;font-size:13px;font-weight:600;text-decoration:none}
+.model-login .model-open:hover{background:#6f8264}
+.model-login .model-open:focus-visible{outline:3px solid #526854;outline-offset:2px}
+.model-login .model-open[hidden]{display:none}
+.model-login-code input{min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#faf6ea;font:13px ui-monospace,monospace}
+.model-login-code button{min-height:44px;padding:10px 16px;border-radius:10px;background:#526854;color:#fff;border-color:#526854;font-weight:600}
+.model-login-code button:hover{background:#6f8264}
+
+button[data-state=saving]:disabled{opacity:.7;cursor:progress}
+button[data-state=saved]{background:#e4ecd9;border-color:#8fa67f;color:#40523e}
+button[data-state=saved]:disabled{opacity:1}
+@media(prefers-reduced-motion:no-preference){button[data-state=saved]{animation:save-flash 1.5s ease-out}}
+@keyframes save-flash{from{background:#bcd3ab;box-shadow:0 0 0 4px #bcd3ab66}to{background:#e4ecd9;box-shadow:0 0 0 0 #bcd3ab00}}
+.install-warning{margin:10px 0 0;padding:10px 12px;border:1px solid #e3c98f;border-radius:10px;background:#fbf3e1;color:#6b4f1d;font-size:13px;line-height:1.5}
+.menu-link{display:flex;align-items:center;min-height:48px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:#fffdf8;color:inherit;text-decoration:none;box-sizing:border-box;width:100%}.menu-link:hover{background:#efeee3}
+/* Quest cards wear their rank: a light tint of the rank colour across the whole card, a stronger edge, and a rank-coloured heading. */
+.quest[data-rank]{--q:var(--rank-e);background:color-mix(in srgb,var(--q) 16%,#fffdf8);border-color:color-mix(in srgb,var(--q) 45%,var(--line));border-left:5px solid var(--q)}
+.quest[data-rank=S]{--q:var(--rank-s)}.quest[data-rank=A]{--q:var(--rank-a)}.quest[data-rank=B]{--q:var(--rank-b)}.quest[data-rank=C]{--q:var(--rank-c)}.quest[data-rank=D]{--q:var(--rank-d)}.quest[data-rank=E]{--q:var(--rank-e)}.quest[data-rank=F]{--q:var(--accent)}
+.quest[data-rank] .quest-action{background:#fffdf8}
+.quest-group[data-rank=S] .rank-heading{color:color-mix(in srgb,var(--rank-s) 55%,#3b2a00)}.quest-group[data-rank=A] .rank-heading{color:var(--rank-a)}.quest-group[data-rank=B] .rank-heading{color:var(--rank-b)}.quest-group[data-rank=C] .rank-heading{color:var(--rank-c)}.quest-group[data-rank=D] .rank-heading{color:var(--rank-d)}.quest-group[data-rank=F] .rank-heading{color:var(--accent)}
+
+/* Ongoing goals: composer toggle, the Mayor's working banner, and goal cards in the Projects panel. */
+.goal-toggle{display:flex;align-items:center;gap:6px;font-size:.85rem;color:#6b6758;margin:0 0 6px}
+.goal-banner{margin:0 0 6px;font-size:.85rem;padding:6px 10px;border-radius:10px;background:#f4efdf;color:#5a5440}
+.goal-toggle[hidden],.goal-banner[hidden],.goal-budget[hidden]{display:none}
+.goal-heading{font-size:.8rem;letter-spacing:.04em;text-transform:uppercase;color:#6b6758;margin:4px 0 8px}
+.goal-note{color:#8a5a14;font-size:.85rem;margin:6px 0}
+.goal-budget{margin-top:8px;font-size:.85rem}
+.goal-budget summary{cursor:pointer;color:#6b6758}
+.goal-budget label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
+.goal-budget input{width:9em}
+.goal-heading-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.goal-heading-row .goal-heading{margin-bottom:8px}
+.goal-ask{min-height:44px;padding:0 12px;border-radius:12px;font-size:.85rem}
+.goal-group-title{font-size:.85rem;font-weight:600;color:#5a5440;margin:10px 0 6px}
+.goal-ended{margin:12px 0 6px;font-size:.9rem}
+.goal-ended>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:#6b6758}
+/* Moonvault token ledger */
+.treasury-tokens{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.treasury-tokens h3{font:600 11px/1.2 var(--font-ui,Inter,"Segoe UI",sans-serif);letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.treasury-tokens-total{font:26px var(--font-display,Georgia,serif);color:#596c55;margin:0 0 8px}.treasury-tokens-total span{font:13px var(--font-ui,Inter,"Segoe UI",sans-serif);color:var(--muted)}
+.treasury-tokens ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.treasury-tokens li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fffdf8;font-size:13px}
+.treasury-tokens li small{grid-column:1/-1;color:var(--muted);font-size:12px}
+/* What the vault label and the Town funds chip show (app.js renderTreasury) */
+.treasury-show{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:2px 0 10px;font-size:12px;color:var(--muted)}.treasury-show .view-switch{background:#f4f0e4;border-color:#e3dccb}
+@media(min-width:600px){.immersive .treasury-hud[data-show=both]{max-width:260px}.immersive .treasury-hud[data-show=tokens] strong::before{content:"Used · "}.immersive .treasury-hud[data-show=both] strong::before{content:none}}
+#diary li.diary-talk span{color:#4f604b}#diary li{align-items:flex-start}
+/* Moonvault: a window below the header that scrolls inside, with its title row kept on screen. Two columns from 760px
+   (balance, vault shows and tokens on the left; the record form and its note on the right), one column below that. Real money spans both. */
+#treasury-dialog{width:min(820px,calc(100vw - 32px));top:88px;bottom:16px;left:0;right:0;margin:0 auto;height:auto;max-height:calc(100dvh - 104px);overflow-y:auto}
+#treasury-dialog .treasury-dialog-title{position:sticky;top:0;z-index:1;background:inherit;padding-top:4px}
+.treasury-columns{display:grid;grid-template-columns:minmax(0,1fr);row-gap:4px}
+.treasury-left,.treasury-right{min-width:0}
+@media(max-width:599px){#treasury-dialog{top:0;bottom:0;width:100%;max-width:none;max-height:none;margin:0;border-radius:0;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px))}}
+@media(min-width:760px){.treasury-columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:start}}
+.ask-toggle{display:flex;align-items:center;gap:6px;font-size:.85rem;color:#6b6758;margin:0 0 6px}
+.ask-toggle[hidden]{display:none}
+.ask-toggle input{width:18px;height:18px;margin:0}
+.chat-message.aside .text{opacity:.78;font-style:italic}
+.aside-label{font-style:normal;font-size:11px;letter-spacing:.04em;color:#6b6657;border:1px solid currentColor;border-radius:999px;padding:0 6px;margin-right:6px}
+/* Mobile and tablet audit: 44px tap targets, the chat composer above the dock, sheets that keep their last control in reach. */
+@media(max-width:768px){
+.immersive .view-switch button,.immersive .inspector .tabs button,.immersive .inspector .home-summary button,.immersive #approvals button,.immersive .approval button,.immersive .memory-search button,.immersive .memory-search input,.immersive .memory-tools button,.immersive .inspector .chat-settings>summary{min-height:44px}
+.immersive .view-switch button,.immersive .inspector .tabs button{min-width:44px}
+.immersive .inspector #message{min-height:44px}
+.immersive .inspector #send{min-width:44px;min-height:44px;height:44px;width:44px}
+.immersive summary,.immersive #real-money summary{min-height:44px;display:flex;align-items:center}
+.immersive #real-money label{min-height:44px;display:flex;align-items:center}
+.immersive .inspector{overflow-y:auto;overflow-x:hidden}
+}
+@media(max-width:599px){
+.immersive .inspector .tab-pane{flex:1 1 0;min-height:120px}
+.immersive .residents .panel-tools{position:relative;top:0}
+.immersive #chat-form{flex:none}
+/* Phone dock: all seven panel buttons share one row with no sideways scroll. */
+.immersive .town-dock{justify-content:space-between;overflow:visible;gap:2px;padding:4px 3px;scroll-snap-type:none}
+.immersive .town-dock button{flex:1 1 0;min-width:0;padding:4px 0}
+
+/* "Needs you" is the dock's longest label: its button takes a little more of the row, and every other button keeps 44px at 320px. */
+.immersive .town-dock #toggle-quests{flex-grow:1.25}
+.immersive .town-dock .dock-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.immersive .world-label{min-height:44px}
+/* Edit-town pill: stays on screen while town editing is on. */
+.edit-pill{position:fixed;z-index:31;top:var(--sheet-top);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 6px 4px 14px;border:1px solid #a0ae84;border-radius:999px;background:#fffdf5;box-shadow:0 5px 18px #26372926;color:#3f4f3c;font-size:14px;font-weight:600;white-space:nowrap}
+.edit-pill[hidden]{display:none}
+.edit-pill button{min-height:36px;padding:4px 14px;border-radius:999px;border:1px solid var(--green);background:var(--green);color:#fffdf8;font-weight:600}
+@media(hover:hover){.edit-pill button:hover{background:#465a47}}
+}
+.scroll-latest{position:absolute;z-index:3;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;display:grid;place-items:center;border-radius:50%;border:1px solid var(--line);background:#fffdf8;color:var(--green);box-shadow:0 5px 18px #26372926;cursor:pointer}
+.scroll-latest[hidden]{display:none}
+@media(hover:hover){.scroll-latest:hover{background:var(--paper-2)}}
+.scroll-latest:focus-visible{outline:3px solid #526854;outline-offset:2px}
+.scroll-latest svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.scroll-latest-dot{display:none;position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#d3a556;border:2px solid #fffdf8}
+.scroll-latest.has-new .scroll-latest-dot{display:block}
+/* Polish: the look's Save and Reset stay in reach, the fine-tune block is a disclosure, the phone switch and the Moonvault disclosures show their controls. */
+.immersive .inspector .tabs button:not(.active),.immersive .home-summary>span{color:#5f5a4c}
+.model-switch{min-height:44px;display:flex;align-items:center;gap:10px}
+.real-money-block summary::after{content:"▸";margin-left:auto;padding-left:8px;font-size:14px;transition:transform .15s ease}
+.real-money-block details[open]>summary::after{transform:rotate(90deg)}
+
+/* Quest log tabs (Active, Done) and owner steps. */
+.quest-tabs{display:flex;gap:8px;margin:0 0 14px}
+.quest-tab{min-height:44px;padding:0 14px;font-size:13px;background:transparent}
+.quest-tab[aria-selected=true]{background:#fffdf8;font-weight:600}
+/* Quest card: one button row (action, Remove or Hide, Details). Every control is a 44px tap target; Details holds the organized text. */
+.quest-buttons{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;margin:8px 0 0}
+.quest-buttons>button{min-height:44px;padding:0 11px;font-size:13px;box-sizing:border-box;margin:0}
+.quest-remove,.quest-more{border:1px solid var(--line);border-radius:12px;background:#fffdf8;color:inherit}
+.quest-remove{color:#6f6656}
+.quest-connect{border:1px solid #526854;border-radius:12px;background:#526854;color:#fff}
+.quest-kind{margin:0 0 2px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b6657}
+.quest-summary{margin:4px 0 0;font-size:13px;line-height:1.4;color:#6b6657;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quest-progress{display:flex;align-items:center;gap:8px;margin:6px 0 0}
+.quest-tally{flex-shrink:0;padding:3px 8px;border-radius:20px;background:#e9eee2;color:#40523e;font-size:11px;line-height:1.3;white-space:nowrap}
+.quest-bar{flex:1 1 auto;height:4px;border-radius:4px;background:#eee9d9;overflow:hidden}
+.quest-bar i{display:block;height:100%;background:#6f9a68}
+.quest-handled{margin:14px 0 0}
+.quest-handled>summary{display:flex;align-items:center;min-height:44px;cursor:pointer;font-size:13px;font-weight:600;color:#526854}
+.quest-handled>.quest-list{margin-top:8px}
+.quest-id{display:inline-block;min-height:28px;margin:0 2px;padding:0 8px;border:1px solid #c9d7bb;border-radius:999px;background:#e3efd9;color:#2f4a2c;font:600 12px/26px ui-monospace,Consolas,monospace;cursor:pointer}
+.quest-hl{padding:0 3px;border-radius:5px;background:#f6ecd0;font-weight:600;white-space:nowrap}
+/* Quest step sheet: a native dialog over the panel. Full height on phones, a wide panel on desktop. Cream like the Studio. */
+.quest-sheet{--q:var(--gallery-line);position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:hidden;display:none;flex-direction:column;box-sizing:border-box;background:var(--gallery-cream);color:var(--gallery-ink);font:14px/1.45 var(--font-ui,Inter,"Segoe UI",sans-serif)}
+.quest-sheet[open]{display:flex}
+.quest-sheet::backdrop{background:#2b332b59}
+.quest-sheet [hidden]{display:none!important}
+@media (min-width:1101px){.quest-sheet{top:84px;bottom:76px;left:auto;right:16px;width:min(520px,calc(100vw - 32px));border:1px solid var(--gallery-line);border-radius:18px;box-shadow:0 12px 45px #24332138}}
+@media (max-width:1100px){.quest-sheet{padding-top:env(safe-area-inset-top,0px)}}
+.quest-sheet-head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 10px;background:var(--gallery-paper);border-bottom:1px solid var(--gallery-line);box-shadow:inset 0 4px 0 var(--q)}
+.quest-sheet-back{flex:none;min-width:44px;min-height:44px;padding:0 14px;border:1px solid var(--gallery-line);border-radius:999px;background:var(--gallery-cream);color:var(--gallery-ink);font:600 13px/1 var(--font-ui,Inter,"Segoe UI",sans-serif);cursor:pointer}
+.quest-sheet-title{flex:1;min-width:0;margin:0;font:20px/1.2 var(--font-display,Georgia,serif);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.quest-sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:grid;gap:14px;align-content:start;padding:14px 16px 18px}
+.quest-sheet-progress:empty{display:none}
+.quest-callout{padding:12px 14px;border:1px solid var(--gallery-line);border-left:4px solid var(--q);border-radius:14px;background:var(--gallery-paper)}
+.quest-fold{margin:0;overflow-wrap:anywhere}
+.quest-fold:not(.is-open){display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.quest-callout .quest-fold:not(.is-open){-webkit-line-clamp:2}
+.quest-intro-text{font-size:14px;line-height:1.5}
+/* An approval's sheet: its whole question (the quest title is only the first sentence), then who waits on it. */
+.quest-question{margin:0;font-size:15px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.quest-question+.quest-fold{margin-top:8px}
+.quest-more-text{display:block;min-height:44px;padding:0 2px;border:0;background:none;color:#4d7a4a;font:600 13px/1 var(--font-ui,Inter,"Segoe UI",sans-serif);cursor:pointer}
+.quest-stepper{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.quest-step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;align-items:start;padding:10px 10px 8px 12px;border:1px solid var(--gallery-line);border-radius:16px;background:var(--gallery-paper)}
+.quest-step[data-done=true]{background:var(--gallery-cream)}
+.quest-step[data-done=true] .quest-step-title,.quest-step[data-done=true] .quest-step-text{color:var(--gallery-muted)}
+.quest-step-num{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--gallery-green-soft);color:var(--gallery-ink);font:700 13px/1 var(--font-ui,Inter,"Segoe UI",sans-serif)}
+.quest-step-main{min-width:0;display:grid;gap:2px}
+.quest-step-head{display:flex;align-items:center;gap:6px;min-width:0}
+.quest-step-title{flex:1 1 auto;min-width:0;margin:0;font:600 15px/1.3 var(--font-display,Georgia,serif);overflow-wrap:anywhere}
+.quest-step-check{display:grid;place-items:center;flex:none;width:44px;height:44px;cursor:pointer}
+.quest-step-check input{width:24px;height:24px;margin:0;accent-color:#4d7a4a;cursor:pointer}
+.quest-step-text{display:grid;gap:4px;font-size:14px;line-height:1.5}
+.quest-step-text .quest-more-text{justify-self:start}
+.quest-note{display:block;width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--gallery-line);border-radius:12px;background:var(--gallery-paper);color:var(--gallery-ink);font:14px var(--font-ui,Inter,"Segoe UI",sans-serif);box-sizing:border-box}
+.quest-sheet-foot{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--gallery-line);background:var(--gallery-paper)}
+.quest-sheet-foot>button{min-height:44px;padding:0 16px;border:1px solid var(--gallery-line);border-radius:999px;background:var(--gallery-cream);color:var(--gallery-ink);font:600 13px/1 var(--font-ui,Inter,"Segoe UI",sans-serif);cursor:pointer}
+.quest-sheet-foot>.quest-remove{margin-right:auto}
+.quest-sheet-foot>.quest-connect{order:-1;flex:1 1 100%;background:#526854;border-color:#526854;color:#fff}
+.quest-sheet-foot>.quest-primary{margin-left:auto;background:var(--gallery-green-soft)}
+.quest-sheet-foot>.quest-primary[data-ready=true]{background:#4d7a4a;border-color:#4d7a4a;color:#fff}
+.quest-sheet-foot>.quest-remove+.quest-primary{margin-left:0}
+.quest-sheet-msg{flex-basis:100%;margin:0;font-size:12px;color:#a24332}
+.quest-sheet-msg:empty{display:none}
+.demo-pill{display:inline-block;margin-left:4px;padding:2px 8px;border-radius:999px;background:#f6e3b4;color:#6b4a00;font-size:12px;font-weight:600;vertical-align:middle}
+.demo-line{margin:6px 0 0;font-size:.85rem;color:#6b4a00;background:#fbf3dc;border-radius:10px;padding:6px 10px}
+.demo-switch{display:block;width:100%;min-height:44px;margin-top:6px;background:#e0a526;color:#2b1d00;border:0;border-radius:10px;font-weight:600}
+.demo-warning{margin:0 0 6px;font-size:.8rem;padding:6px 10px;border-radius:10px;background:#fbf3dc;color:#6b4a00;border:1px solid #e6c46a}
+.world-label .demo-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:var(--r-pill);background:#e0a526;color:#2b1d00;font-size:calc(var(--text-xs) - 1px);font-weight:700;letter-spacing:.06em;line-height:1.4;vertical-align:middle}
+.goal-card.is-demo{border-color:#d9a13a;background:#fff8e6}
+.demo-goal-mode{color:#8a5a00;font-weight:600}
+.world-ai [hidden]{display:none!important}
+.world-ai{margin:8px 0;border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:grid;gap:8px}
+.world-ai legend{font-size:.85rem;padding:0 4px}
+.world-ai-field{display:grid;gap:4px;font-size:.85rem}
+.world-ai-note{margin:0;font-size:.8rem}
+/* Mayor's quest notice: amber like the hologram's "!", one row, the button is a 44px target. Shown only while the Mayor is selected and quests need the owner. */
+.quest-notice{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 var(--pad) 8px;padding:8px 10px;border:1px solid #ffb347;border-radius:14px;background:#fff3dc;color:#6e3006}
+.quest-notice[hidden]{display:none}
+.quest-notice-text{display:flex;align-items:center;gap:8px;min-width:0;margin:0;font-size:15px;font-weight:600}
+.quest-notice-mark{display:grid;place-items:center;flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#ffb347;color:#6e3006;font-weight:800}
+.quest-notice-open{flex-shrink:0;min-height:44px;padding:6px 14px;border:0;border-radius:12px;background:#6e3006;color:#fff8ec;font-size:14px;font-weight:600;white-space:nowrap}
+/* Treasury pill: the full line is in title and aria-label; the phone pill shows a short label that always fits, so nothing clips the menu button. */
+.treasury-short{display:none}
+@media(max-width:600px){
+.immersive .inspector{padding-bottom:16px}
+}
+/* Chat sheet at every width: a compact header with Visit home and Redesign beside the name, one-row composer (text box and
+ * Send share a row, the toggles appear only while the box is focused) and 15px messages, so the thread gets the height. */
+.immersive .inspector #chat-form{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:4px 8px;align-items:center;margin:0 0 6px;padding:6px 8px}
+.immersive .inspector #chat-form>:is(.goal-banner,.goal-toggle,.reply-as-answer,.ask-toggle){grid-column:1/-1}
+.immersive .inspector #chat-form>.goal-banner{margin:0;padding:4px 8px;font-size:12px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.immersive .inspector #chat-form:not(:focus-within) :is(.goal-toggle,.ask-toggle){display:none}
+.immersive .inspector #chat-form>:is(.goal-toggle,.ask-toggle){min-height:44px;margin:0;font-size:12px}
+.immersive .inspector #chat-form>textarea{grid-column:1;height:44px;min-height:44px;resize:none;transition:height .15s ease}
+.immersive .inspector #chat-form>textarea:focus{height:88px}
+.immersive .inspector #chat-form>div{grid-column:2;display:flex;justify-content:flex-end}
+.immersive .inspector #composer-hint{display:none}
+.immersive .inspector #cat-header{padding:4px var(--pad) 2px;gap:8px;align-items:center}
+.immersive .inspector #cat-header .avatar{width:30px;height:30px;font-size:18px}
+.immersive .inspector #cat-header h2{font:600 16px/1.2 var(--font-display,Georgia,serif);margin:0}
+.immersive .inspector #cat-header p{font-size:12px;line-height:1.3;margin:0}
+.immersive .inspector #cat-header .demo-line{margin:4px 0 0;padding:4px 8px;font-size:12px;line-height:1.35}
+.immersive .inspector #cat-header{padding-right:178px}
+.immersive .inspector #cat-header>*{min-width:0}
+.immersive .inspector #cat-header p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.immersive .inspector .home-summary{margin:-40px 0 0 auto;width:max-content;padding:0 var(--pad) 4px 0;border:0;position:relative}
+.immersive .inspector #home-label{display:none}
+.immersive .inspector .home-summary button{font-size:12px;min-height:36px;padding:4px 10px}
+.immersive .inspector .quest-notice{padding:4px 6px 4px 10px}
+.immersive .inspector .chat-settings>summary{min-height:36px}
+.immersive .inspector .tabs button{min-height:40px;font-size:14px}
+.immersive .inspector #chat{min-height:96px}
+.immersive .inspector #approvals{max-height:104px}
+.immersive .inspector .chat-message{font-size:15px;line-height:1.5;margin-bottom:14px}
+.immersive .inspector .chat-message .text{font-size:15px;line-height:1.5;padding:9px 11px}
+.immersive .inspector .chat-message .sender{font-size:13px;line-height:1.4;margin-bottom:3px}
+.immersive .inspector #chat-form>.demo-warning{grid-column:1/-1;margin:0;padding:4px 8px;font-size:12px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== Phone and dock pass: the rules below come last and win over the earlier phone and tablet rules. ===== */
+/* Dock: six items (Cats, Chat, Projects, Quests, Diary, Archive). Coins and Memorial stay in the DOM, hidden. */
+.immersive .town-dock button[hidden]{display:none!important}
+.immersive .town-dock .dock-label{font-size:var(--text-xs)}
+.immersive .town-dock button[aria-expanded=true] .dock-label{font-weight:700}
+/* Small tablets: the items share the row's spare width instead of bunching at the left; they still scroll when they do not fit. */
+@media(min-width:600px) and (max-width:768px){.immersive .town-dock button{flex:1 0 auto}}
+@media(max-width:599px){
+ .immersive .town-dock{gap:2px;padding:var(--space-1) 3px}
+ .immersive .town-dock button{min-height:56px;padding:var(--space-1) 0}
+}
+
+/* Caveat lines: a complete short sentence on a phone with Details for the rest; the full text on wider screens. */
+.caveat-short,.caveat-more{display:none}
+.caveat-more{padding:0 6px;border:0;background:none;color:inherit;font:600 12px/1 var(--font-ui,Inter,"Segoe UI",sans-serif);text-decoration:underline;cursor:pointer}
+.caveat .demo-switch{display:block}
+.immersive .inspector #cat-header .demo-line{white-space:normal;overflow:visible;text-overflow:clip}
+@media(max-width:599px){
+ .caveat-short{display:inline}
+ .caveat-more{display:inline-block;min-height:44px;margin:-6px 0;vertical-align:middle}
+ .caveat-long{display:none}
+ .caveat.is-open .caveat-long{display:inline}
+ .caveat.is-open .caveat-short{display:none}
+ .immersive .inspector #chat-form>.demo-warning{display:none}
+}
+
+/* Header on phones: the brand mark, the status dot, Money with its short value, AI, the menu. Under 421px the status words go,
+   so the two chips never squeeze the brand. */
+@media(max-width:599px){
+ .immersive header{gap:var(--space-2);padding:0 var(--space-1)}
+ .immersive .brand{justify-content:center;padding:0}
+ .immersive .brand>span:last-child{display:none}
+ .immersive .header-actions{gap:var(--space-1)}
+ .immersive .inspector .demo-pill{display:none}
+ .immersive .treasury-gem{display:none}
+ .immersive .treasury-hud .treasury-text{display:flex;align-items:baseline;gap:var(--space-1)}
+ .immersive .treasury-hud small{font-size:var(--text-sm)}
+ .immersive .treasury-hud #treasury-total{display:none}
+ .immersive .treasury-short{display:block;font:700 var(--text-sm)/1.2 var(--font-ui);color:var(--ink);white-space:nowrap;font-variant-numeric:lining-nums tabular-nums}
+ .immersive .models-chip{width:auto;padding:0 var(--space-3);gap:var(--space-1)}
+ .immersive .models-label{position:static;width:auto;height:auto;clip-path:none;font-size:0}
+ .immersive .models-label::before{content:"AI";font:600 var(--text-sm)/1 var(--font-ui)}
+}
+/* Under 421px the status words go and the connection dot sits on the brand mark's corner as a status badge, ringed in paper,
+   instead of floating alone between the mark and Money. */
+@media(max-width:420px){.immersive #world-activity{display:none}.immersive header .world-life{align-self:flex-end;margin:0 0 var(--space-1) calc(-1 * var(--space-5));pointer-events:none}.immersive #connection{max-width:10px}.immersive #connection::before{width:10px;height:10px;box-shadow:0 0 0 2px var(--paper)}}
+
+/* Chat sheet on phones: one header row (name and status, the close button at its right), one row of Visit home, Customize and Settings,
+   the tabs, the quest chip, a one-row composer. The conversation takes what is left. */
+.immersive .inspector .chat-tools{display:contents}
+@media(max-width:599px){
+ .immersive .inspector{padding-bottom:8px}
+ .immersive .inspector>.panel-tools{position:absolute;top:0;right:0;z-index:3;width:48px;height:44px;min-height:44px;margin:0;padding:0;border:0;background:none;justify-content:center}
+ .immersive .inspector>.panel-tools>span{display:none}
+ .immersive .inspector #cat-header{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 48px 0 var(--pad)}
+ .immersive .inspector #cat-header>div{flex:1 1 auto;min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;column-gap:8px}
+ .immersive .inspector #cat-header>div>*{min-width:0}
+ .immersive .inspector #cat-header h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+ .immersive .inspector #cat-header .cat-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:1.3;margin:0}
+ .immersive .inspector #cat-header .cat-role,.immersive .inspector #cat-header>div>p:not(.cat-status):not(.demo-line){display:none}
+ .immersive .inspector #cat-header .demo-line{grid-column:1/-1;margin:2px 0 0;padding:2px 0 0;background:none;border:0;font-size:12px;line-height:1.35}
+ .immersive .inspector .chat-tools{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 var(--pad)}
+ .immersive .inspector .chat-tools .home-summary{display:flex;gap:6px;margin:0;width:auto;padding:0;position:static}
+ .immersive .inspector .chat-tools .home-summary button{min-height:44px;padding:0 12px;font-size:13px}
+ .immersive .inspector .chat-tools .chat-settings{margin:0;border:0;position:static;flex:0 0 auto}
+ .immersive .inspector .chat-tools .chat-settings>summary{min-height:44px;padding:0 4px}
+ .immersive .inspector .tabs{padding:0 var(--pad);gap:0;justify-content:space-between;margin:0}
+ .immersive .inspector .tabs button{min-height:44px;min-width:44px;flex:1 1 auto;padding:0 2px;font-size:13px}
+ .immersive .inspector .quest-notice{display:block;margin:0 var(--pad) 6px;padding:0;border:0;background:none}
+ .immersive .inspector .quest-notice[hidden]{display:none}
+ .immersive .inspector .quest-notice-open{display:block;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:#6e3006;color:#fff8ec;font-size:14px;font-weight:600;text-align:center}
+ .immersive .inspector #chat-form{margin:0 0 6px;padding:4px 6px;gap:4px 8px}
+ .immersive .inspector>.panel-tools .panel-close{width:44px;height:44px;min-height:44px;margin-right:0}
+}
+
+/* Settings sheet: a bottom sheet on phones, sized to its content; inside the chat panel on wider screens. Its Reasoning label shows. */
+.cat-settings-flyout .mode label{display:block}
+.cat-settings-flyout .settings-body .mode label{font-size:12px}
+
+/* Cats panel: one Customize button in the header. */
+#cats-customize{min-height:var(--tap,44px);margin-left:auto;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:#fffdf5;color:#4b473d;font:600 13px/1 var(--font-ui,Inter,"Segoe UI",sans-serif)}
+.immersive .residents .section-heading{align-items:center;gap:8px}
+
+/* Sheets: the content ends clear of the dock. */
+@media(max-width:599px){
+ .immersive .panel-body{padding-bottom:calc(var(--dock-h) + env(safe-area-inset-bottom,0px))}
+}
+
+/* Dialogs: small ones are bottom sheets on phones, the two full-screen pages (AI models, Moonvault) fill the screen with a back pill,
+   and desktop keeps centred modals. Every sheet and dialog closes with the shared × (.close-x), placed in its top-right corner. */
+dialog>.close-x{position:absolute;top:12px;right:12px;z-index:2}
+.close-x{min-width:var(--tap,44px);min-height:var(--tap,44px)}
+.phone-only{display:none}
+.desk-only{display:inline-flex}
+@media(max-width:600px){
+ .phone-only{display:inline-flex}
+ .desk-only{display:none}
+ #share-dialog,#pair-dialog,#recruit-dialog,#road-dialog,#council-dialog{inset:auto 0 0 0;top:auto;margin:0;width:100%;max-width:100%;max-height:88dvh;padding:20px 18px calc(18px + env(safe-area-inset-bottom,0px));border-width:1px 0 0;border-radius:var(--radius-sheet,20px) var(--radius-sheet,20px) 0 0;overflow-y:auto;box-sizing:border-box}
+ #approval-dialog{border-radius:var(--radius-sheet,20px) var(--radius-sheet,20px) 0 0}
+ #models-dialog,#treasury-dialog{inset:0;top:0;bottom:0;left:0;right:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));overflow-y:auto;box-sizing:border-box}
+}
+@media(min-width:601px){
+ #share-dialog,#pair-dialog,#recruit-dialog,#road-dialog,#council-dialog,#approval-dialog{border-radius:var(--radius-sheet,20px)}
+}
+.treasury-season{display:block;min-height:var(--tap,44px);margin-top:12px;padding:0 16px;border:1px solid var(--line);border-radius:12px;background:#fffdf5;color:#4b473d;font:600 14px/1 var(--font-ui,Inter,"Segoe UI",sans-serif)}
+@media(min-width:600px){.treasury-show .view-switch button{min-height:36px}}
+.treasury-dialog-title .back-pill{margin-right:auto}
+
+/* Pairing: a row for the disabled button and its hint, and the QR code in a white square. */
+.pair-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#remote-invite-hint{font-size:12px}
+#remote-invite-hint[hidden]{display:none}
+.pair-qr{display:block;width:180px;height:180px;margin:14px auto 0;padding:8px;box-sizing:border-box;background:#fff;border-radius:12px}
+.pair-qr:empty{display:none}
+.pair-qr svg{display:block;width:100%;height:100%}
+.pair-qr-caption{margin:6px 0 0;text-align:center;font-size:12px;color:var(--muted)}
+.pair-qr:empty+.pair-qr-caption{display:none}
+@media(max-width:599px){
+ #pair-dialog a,#share-dialog a{display:flex;align-items:center;min-height:44px}
+}
+
+/* First load: the town waits for its first frame behind a plain cream panel. */
+.town-loading{position:absolute;inset:0;z-index:2;display:grid;place-items:center;padding:24px;background:#eef2e4;color:#4b473d;font:600 15px/1.3 var(--font-display,Georgia,serif);text-align:center;pointer-events:none}
+.town-loading[hidden]{display:none}
+
+/* AI models: the provider strip wraps into rows on phones, so every provider is in view. */
+@media(max-width:768px){
+ .models-nav{flex-wrap:wrap;overflow:visible;gap:4px}
+ .models-nav button{flex:0 0 auto}
+}
+
+/* Tap targets: 44px on phones; desktop chat tabs at least 36px tall and wide; 3D labels at least 36px on desktop. */
+@media(max-width:599px){
+ .immersive .edit-pill button{min-height:44px}
+ .immersive .world-label{min-height:44px;min-width:44px}
+}
+@media(min-width:600px){.immersive .inspector .tabs button{min-width:36px}.immersive .world-label{min-height:36px}}
+
+/* Archive: titles clamp to two lines; the full title shows on hover. */
+.archive-body .gallery-meta strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:normal;text-overflow:clip}
+/* Desktop: the archive header sits over the same column as the content (archive-body centres its children at 1080px). */
+@media(min-width:601px){.archive-view .memorial-head{padding-left:max(14px,calc((100% - 1080px) / 2));padding-right:max(12px,calc((100% - 1080px) / 2))}}
+/* Coins: the season form folds under Options; its summary row is a full tap target. */
+.season-options{margin:8px 0}.season-options>summary{min-height:var(--tap,44px);display:flex;align-items:center;cursor:pointer;color:var(--muted);font-size:13px}
+.model-login [data-role=login-copy]{margin-top:6px;min-height:var(--tap,44px)}.model-login .model-login-hint{font-size:11px;color:var(--muted);margin-top:6px}
+/* Quest links: an address in a step is a link, and each site it names gets a one-tap Open button. Token box for Connect quests. */
+.quest-link{color:var(--accent,#526854);overflow-wrap:anywhere;text-decoration:underline}.quest-open{display:inline-flex;align-items:center;min-height:var(--tap,44px);margin:8px 8px 0 0;padding:0 16px;border-radius:var(--radius-control,12px);background:var(--accent,#526854);color:#fff;font:600 14px var(--font-ui,Inter,"Segoe UI",sans-serif);text-decoration:none}.quest-open:hover{filter:brightness(1.1)}
+.quest-sheet-connect:not(:empty){margin:12px 0}.quest-sent{margin:4px 0 0;font-size:13px;line-height:1.4;color:var(--accent)}
+.quest-token{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:var(--radius-card,14px);background:var(--paper-2,#fbf6ea)}.quest-token-help{margin:0 0 4px;font-size:13px;color:var(--muted)}.quest-token-input{display:block;width:100%;min-height:var(--tap,44px);margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;font:14px var(--font-ui,Inter,"Segoe UI",sans-serif)}
+/* World labels (town.js places and names them): a paper tag with a small tail pointing down at its house, 12px (13px on phones),
+   --r-sm and --e1. The tag itself is the tap target: 44px tall on phones, 36px with a mouse (rules above). The tail is ::before because
+   style.css's working dot is ::after; its colour follows the tag through --label-bg. */
+.immersive .world-label{--label-bg:var(--paper);padding:0 var(--space-3);border:0;border-radius:var(--r-sm);background:var(--label-bg);color:var(--ink);box-shadow:var(--e1);font:600 var(--text-xs)/1.2 var(--font-ui);-webkit-tap-highlight-color:transparent;transition:scale var(--dur-quick) var(--ease-out)}
+.immersive .world-label::before{content:'';position:absolute;top:100%;left:50%;margin-left:-5px;border:5px solid transparent;border-top-color:var(--label-bg);border-bottom:0;pointer-events:none}
+.immersive .world-label.selected{--label-bg:var(--accent);color:var(--on-accent)}
+.immersive .world-label.working::after{color:var(--working)}
+.immersive .world-label:active{scale:var(--press)}
+@media(hover:hover){.immersive .world-label:not(.selected):hover{--label-bg:var(--paper-2)}}
+@media(max-width:599px){.immersive .world-label{font-size:var(--text-sm)}}

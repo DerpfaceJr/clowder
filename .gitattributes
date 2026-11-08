@@ -1,0 +1,5 @@
+* text=auto
+*.glb binary
+*.png binary
+*.cmd text eol=crlf
+test/fixtures/golden/* -text

@@ -1,0 +1,524 @@
+[
+ {
+  "id": "c-ada",
+  "name": "Ada",
+  "role": "Build the thing",
+  "style": "builder",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "tabby",
+   "parts": [
+    "apron"
+   ],
+   "expression": "neutral",
+   "fur": "#f3e3c3",
+   "patch": "#7a7480",
+   "cream": "#fbf3e6",
+   "outfit": "#5b7fb5",
+   "trim": "#5a3a6b",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#6181a1",
+    "wall": "#efe0d2",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "c-bob",
+  "name": "Bob",
+  "role": "Keep the books",
+  "style": "banker",
+  "founder": false,
+  "look": {
+   "base": "sprout",
+   "marking": "tabby",
+   "parts": [
+    "monocle",
+    "knit_scarf",
+    "apron"
+   ],
+   "expression": "neutral",
+   "fur": "#f2a14f",
+   "patch": "#e18e3f",
+   "cream": "#fbf3e6",
+   "outfit": "#607f9a",
+   "trim": "#8e4a33",
+   "eyes": "#3b2a20",
+   "house": {
+    "roof": "#708376",
+    "wall": "#eadbc6",
+    "trim": "#8a6248"
+   }
+  }
+ },
+ {
+  "id": "c-cy",
+  "name": "Cy",
+  "role": "Research papers",
+  "style": "scholar",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "solid",
+   "parts": [
+    "wizard_hat",
+    "cape"
+   ],
+   "expression": "neutral",
+   "fur": "#f3e3c3",
+   "patch": "#3d3433",
+   "cream": "#fbf3e6",
+   "outfit": "#9c5b6e",
+   "trim": "#6b4329",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#93687c",
+    "wall": "#eadbc6",
+    "trim": "#8a6248"
+   }
+  }
+ },
+ {
+  "id": "c-di",
+  "name": "Di",
+  "role": "Review quality",
+  "style": "critic",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "solid",
+   "parts": [
+    "waistcoat",
+    "neck_bow"
+   ],
+   "expression": "neutral",
+   "fur": "#f2c2a0",
+   "patch": "#7a7480",
+   "cream": "#fadebf",
+   "outfit": "#7d5a9e",
+   "trim": "#8e4a33",
+   "eyes": "#3b2a20",
+   "house": {
+    "roof": "#b28882",
+    "wall": "#e9e2d0",
+    "trim": "#987254"
+   }
+  }
+ },
+ {
+  "id": "c-ed",
+  "name": "Ed",
+  "role": "Sell goods at market",
+  "style": "merchant",
+  "founder": false,
+  "look": {
+   "base": "bean",
+   "marking": "tabby",
+   "parts": [
+    "apron",
+    "satchel"
+   ],
+   "expression": "neutral",
+   "fur": "#d9b38c",
+   "patch": "#e18e3f",
+   "cream": "#fadebf",
+   "outfit": "#607f9a",
+   "trim": "#8e4a33",
+   "eyes": "#3b2a20",
+   "house": {
+    "roof": "#867270",
+    "wall": "#eadbc6",
+    "trim": "#9b7a5c"
+   }
+  }
+ },
+ {
+  "id": "c-fay",
+  "name": "Fay",
+  "role": "Dispatch support",
+  "style": "operator",
+  "founder": false,
+  "look": {
+   "base": "sprout",
+   "marking": "tuxedo",
+   "parts": [
+    "satchel"
+   ],
+   "expression": "neutral",
+   "fur": "#e8914a",
+   "patch": "#7a7480",
+   "cream": "#fbf3e6",
+   "outfit": "#5b7fb5",
+   "trim": "#5a3a6b",
+   "eyes": "#2c3a4a",
+   "house": {
+    "roof": "#7e97a0",
+    "wall": "#efe0d2",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "c-gus",
+  "name": "Gus",
+  "role": "Archive records",
+  "style": "archivist",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "tabby",
+   "parts": [
+    "spectacles",
+    "cape"
+   ],
+   "expression": "neutral",
+   "fur": "#fbf6ee",
+   "patch": "#4a3b36",
+   "cream": "#fadebf",
+   "outfit": "#c46e4f",
+   "trim": "#f4f1ea",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#9d8688",
+    "wall": "#eadbc6",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "c-hal",
+  "name": "Hal",
+  "role": "Lead the town",
+  "style": "mayor",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "solid",
+   "parts": [
+    "sunglasses",
+    "bell_collar",
+    "waistcoat"
+   ],
+   "expression": "neutral",
+   "fur": "#f2a14f",
+   "patch": "#3d3433",
+   "cream": "#fadebf",
+   "outfit": "#c46e4f",
+   "trim": "#8e4a33",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#968a80",
+    "wall": "#efe0d2",
+    "trim": "#987254"
+   }
+  }
+ },
+ {
+  "id": "mayor",
+  "name": "Mayor",
+  "role": "Civic leader",
+  "style": "mayor",
+  "founder": true,
+  "look": {
+   "expression": "neutral",
+   "eyes": "#231d18",
+   "base": "bean",
+   "marking": "tabby",
+   "parts": [
+    "cape"
+   ],
+   "fur": "#f2a14f",
+   "patch": "#e18e3f",
+   "cream": "#fadebf",
+   "outfit": "#4f7582",
+   "trim": "#e8b354"
+  }
+ },
+ {
+  "id": "c-ivy",
+  "name": "Ivy",
+  "role": "Generic helper",
+  "style": "builder",
+  "founder": false,
+  "look": {
+   "base": "sprout",
+   "marking": "solid",
+   "parts": [
+    "crown"
+   ],
+   "expression": "neutral",
+   "fur": "#d9b38c",
+   "patch": "#6e4c36",
+   "cream": "#fbf3e6",
+   "outfit": "#4f7a5a",
+   "trim": "#5a3a6b",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#5f8484",
+    "wall": "#eadbc6",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "c-jo",
+  "name": "Jo",
+  "role": "No match words",
+  "style": "merchant",
+  "founder": false,
+  "look": {
+   "base": "sprout",
+   "marking": "calico",
+   "parts": [
+    "neck_bow"
+   ],
+   "expression": "neutral",
+   "fur": "#c9c2b8",
+   "patch": "#3d3433",
+   "cream": "#fadebf",
+   "outfit": "#607f9a",
+   "trim": "#8e4a33",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#9c8582",
+    "wall": "#f5e2c8",
+    "trim": "#7d5a44"
+   }
+  }
+ },
+ {
+  "id": "c-kai",
+  "name": "Kai",
+  "role": "Run tests",
+  "style": "critic",
+  "founder": false,
+  "look": {
+   "base": "bean",
+   "marking": "solid",
+   "parts": [
+    "waistcoat",
+    "neck_bow"
+   ],
+   "expression": "neutral",
+   "fur": "#c9c2b8",
+   "patch": "#3d3433",
+   "cream": "#fbf6ee",
+   "outfit": "#4f7a5a",
+   "trim": "#6b4329",
+   "eyes": "#2c3a4a",
+   "house": {
+    "roof": "#958c60",
+    "wall": "#efe0d2",
+    "trim": "#7d5a44"
+   }
+  }
+ },
+ {
+  "id": "c-lu",
+  "name": "Lu",
+  "role": "Audit trading",
+  "style": "banker",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "calico",
+   "parts": [
+    "spectacles",
+    "waistcoat"
+   ],
+   "expression": "neutral",
+   "fur": "#4a3b36",
+   "patch": "#4a3b36",
+   "cream": "#fbf3e6",
+   "outfit": "#c46e4f",
+   "trim": "#5a3a6b",
+   "eyes": "#2c3a4a",
+   "house": {
+    "roof": "#97805c",
+    "wall": "#f0dfbf",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "c-max",
+  "name": "Max",
+  "role": "Write science",
+  "style": "scholar",
+  "founder": false,
+  "look": {
+   "base": "bean",
+   "marking": "tuxedo",
+   "parts": [
+    "wizard_hat",
+    "cape"
+   ],
+   "expression": "neutral",
+   "fur": "#fbf6ee",
+   "patch": "#6e4c36",
+   "cream": "#fadebf",
+   "outfit": "#4f7a5a",
+   "trim": "#6b4329",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#7f7b7c",
+    "wall": "#f3e6cf",
+    "trim": "#987254"
+   }
+  }
+ },
+ {
+  "id": "c-nia",
+  "name": "Nia",
+  "role": "Build sales shop",
+  "style": "builder",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "calico",
+   "parts": [
+    "apron"
+   ],
+   "expression": "neutral",
+   "fur": "#f2a14f",
+   "patch": "#e18e3f",
+   "cream": "#fbf3e6",
+   "outfit": "#5b7fb5",
+   "trim": "#f4f1ea",
+   "eyes": "#2c3a4a",
+   "house": {
+    "roof": "#6283a4",
+    "wall": "#f0dfbf",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "scholar",
+  "name": "Scholar",
+  "role": "Learn things",
+  "style": "scholar",
+  "founder": true,
+  "look": {
+   "expression": "neutral",
+   "eyes": "#231d18",
+   "base": "bean",
+   "marking": "solid",
+   "parts": [
+    "wizard_hat",
+    "cape"
+   ],
+   "fur": "#f3e3c3",
+   "patch": "#795a4d",
+   "cream": "#fbf3e6",
+   "outfit": "#7d5a9e",
+   "trim": "#e8b354"
+  }
+ },
+ {
+  "id": "banker",
+  "name": "Banker",
+  "role": "Trading desk",
+  "style": "banker",
+  "founder": true,
+  "look": {
+   "expression": "neutral",
+   "eyes": "#231d18",
+   "base": "sprout",
+   "marking": "tuxedo",
+   "parts": [
+    "spectacles",
+    "waistcoat"
+   ],
+   "fur": "#fbf6ee",
+   "patch": "#9c9898",
+   "cream": "#fbf6ee",
+   "outfit": "#8a8f4e",
+   "trim": "#5d6233"
+  }
+ },
+ {
+  "id": "c-oz",
+  "name": "Oz",
+  "role": "",
+  "style": "archivist",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "calico",
+   "parts": [
+    "crown",
+    "monocle",
+    "cape"
+   ],
+   "expression": "neutral",
+   "fur": "#d9b38c",
+   "patch": "#e8955a",
+   "cream": "#fadebf",
+   "outfit": "#c46e4f",
+   "trim": "#5a3a6b",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#927d7f",
+    "wall": "#f3e6cf",
+    "trim": "#9b7a5c"
+   }
+  }
+ },
+ {
+  "id": "c-pip",
+  "name": "Pip",
+  "role": "Deliver parcels",
+  "style": "operator",
+  "founder": false,
+  "look": {
+   "base": "sprout",
+   "marking": "calico",
+   "parts": [
+    "satchel"
+   ],
+   "expression": "neutral",
+   "fur": "#8a6248",
+   "patch": "#4a3b36",
+   "cream": "#fbf3e6",
+   "outfit": "#607f9a",
+   "trim": "#5a3a6b",
+   "eyes": "#3b2a20",
+   "house": {
+    "roof": "#7e9492",
+    "wall": "#f5e2c8",
+    "trim": "#a8825f"
+   }
+  }
+ },
+ {
+  "id": "c-quin",
+  "name": "Quinn",
+  "role": "Something else entirely",
+  "style": "builder",
+  "founder": false,
+  "look": {
+   "base": "puff",
+   "marking": "tuxedo",
+   "parts": [
+    "neck_bow",
+    "fairy_wings",
+    "tutu"
+   ],
+   "expression": "neutral",
+   "fur": "#c9c2b8",
+   "patch": "#3d3433",
+   "cream": "#fadebf",
+   "outfit": "#4f7582",
+   "trim": "#3f5d8a",
+   "eyes": "#231d18",
+   "house": {
+    "roof": "#5d7f90",
+    "wall": "#eadbc6",
+    "trim": "#7d5a44"
+   }
+  }
+ }
+]

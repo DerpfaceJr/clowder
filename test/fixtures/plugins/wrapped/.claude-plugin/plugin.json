@@ -1,0 +1,7 @@
+{
+  "name": "Wrapped",
+  "mcpServers": {
+    "alpha": {"command": "from-plugin-json"},
+    "beta": {"url": "https://example.com/beta"}
+  }
+}

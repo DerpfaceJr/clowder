@@ -1,0 +1,29 @@
+/* Devices > How your phone reaches this computer (remote-path.js).
+   Colours are the theme tokens in style.css; the badges reuse the connectors panel's .cx-badge. On phones Devices is a full-screen page. */
+.remote-path{display:grid;gap:10px;margin:14px 0}
+.remote-path h3{margin:0;font-size:var(--text-md)}
+.remote-way{display:grid;gap:var(--space-2);min-width:0;padding:var(--space-3) 14px;border:1px solid transparent;border-radius:var(--r-md);background:var(--paper);box-shadow:var(--e1)}
+.remote-way[data-in-use]{border-color:var(--accent);background:var(--paper-2)}
+.remote-way-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.remote-way-head h4{margin:0 4px 0 0;font-size:var(--text-md)}
+.remote-way .cx-badge[data-in-use]{background:var(--accent);color:var(--paper)}
+.remote-way p{margin:0;font-size:var(--text-sm);line-height:1.5;overflow-wrap:anywhere}
+.remote-way-line{font-weight:600}
+.remote-address{font:var(--text-sm) ui-monospace,Consolas,monospace;color:var(--accent)}
+.remote-steps{margin:0;padding-left:20px;font-size:var(--text-sm);line-height:1.5}
+.remote-steps li+li{margin-top:4px}
+.remote-steps li[data-done]{color:var(--muted)}
+.remote-steps a{display:inline-flex;align-items:center;min-height:var(--tap);color:var(--accent);font-weight:600;text-underline-offset:3px}
+.remote-step-done{color:var(--accent);font-weight:600}
+.remote-serve code{font:var(--text-xs) ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+.remote-way-actions{display:flex;flex-wrap:wrap;gap:8px}
+.remote-way-actions button{min-height:var(--tap);border-radius:var(--r-sm)}
+.remote-or{margin:2px 0 0;font-size:var(--text-xs)}
+#paired-devices>div{flex-wrap:wrap}
+#paired-devices>div>span{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+#paired-devices button{min-height:var(--tap)}
+
+@media(max-width:600px){
+  dialog#share-dialog{inset:0;top:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:max(16px,env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));overflow-x:hidden}
+  #share-dialog h2{padding-right:52px}
+}

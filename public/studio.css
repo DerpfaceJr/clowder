@@ -1,0 +1,70 @@
+/* The Studio (studio.js): character creation for a cat's look, costume and house. Cream like the Gallery and the Archive. The town
+   stays on screen behind it, so the panel never covers the 3D preview: a column on the right on desktop, a sheet below on phones.
+   The panel grammar: the cat's name in Fraunces at --text-xl, UI body text, --r-md cards with --e1, the sheet on --e3. */
+.studio{--studio-on:var(--accent);position:fixed;z-index:45;display:flex;flex-direction:column;min-height:0;background:var(--gallery-cream);color:var(--gallery-ink);border:0;box-shadow:var(--e3);font:var(--text-sm)/1.35 var(--font-ui)}
+.studio[hidden],.studio-panel[hidden],.studio-unsaved[hidden],.sr-only[hidden]{display:none}
+@media (min-width:1101px){.studio{top:84px;right:16px;bottom:16px;width:min(420px,calc(100vw - 32px));border-radius:var(--r-lg)}.studio .sheet-grip{display:none}}
+.studio button:focus-visible,.studio input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.studio-top{flex:none;padding:10px 14px 0 18px;border-bottom:1px solid var(--gallery-line)}
+.studio-top-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.studio-kicker{margin:0;font:600 var(--text-xs)/1 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--gallery-muted)}
+/* The exit is the .close-x control (style.css), top-right. */
+.studio-close{flex:none}
+@media(hover:hover){.studio-close:hover{background:var(--gallery-green-soft)}}
+.studio-cat{display:flex;align-items:center;gap:8px;padding:6px 0 10px}
+.studio-name{flex:1;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font:500 var(--text-xl)/1.15 var(--font-display)}
+.studio-step{flex:none;width:44px;height:44px;border:1px solid var(--gallery-line);border-radius:50%;background:var(--gallery-paper);color:var(--gallery-ink);font-size:22px;line-height:1;cursor:pointer}
+.studio-tabs{flex:none;display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--gallery-line)}
+.studio-tab{flex:1 1 0;min-height:var(--tap);padding:0 var(--space-2);border:1px solid transparent;border-radius:var(--r-pill);background:none;color:var(--gallery-muted);font:600 var(--text-sm)/1 var(--font-ui);cursor:pointer}
+.studio-tab[aria-selected=true]{background:var(--gallery-green-soft);border-color:var(--gallery-line);color:var(--gallery-ink)}
+.studio-unsaved{display:inline-block;width:7px;height:7px;margin-left:6px;vertical-align:middle;border-radius:50%;background:var(--working)}
+.studio-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:14px 16px 18px;overscroll-behavior:contain}
+.studio-panel{display:grid;gap:18px}
+.studio-section{min-width:0}
+.studio-section h3{margin:0 0 var(--space-2);font:600 var(--text-xs)/1 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.studio-chips{display:flex;flex-wrap:wrap;gap:8px}
+.studio-chip{min-height:44px;padding:0 14px;border:1px solid var(--gallery-line);border-radius:var(--r-pill);background:var(--gallery-paper);color:var(--gallery-ink);font:500 var(--text-sm)/1 var(--font-ui);cursor:pointer}
+.studio-chip[aria-pressed=true]{background:var(--studio-on);border-color:var(--studio-on);color:var(--on-accent)}
+.studio-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.studio-card{min-height:56px;padding:var(--space-3);display:flex;flex-direction:column;gap:6px;align-items:flex-start;border:0;border-radius:var(--r-md);background:var(--gallery-paper);box-shadow:var(--e1);color:var(--gallery-ink);font:600 var(--text-md)/1.2 var(--font-ui);text-align:left;cursor:pointer}
+.studio-card[aria-pressed=true]{outline:2px solid var(--studio-on);outline-offset:2px;background:var(--gallery-green-soft)}
+.studio-card-icon{font-size:18px;line-height:1}
+/* Style cards: the name on top, then the icon and colour dots on one line. */
+.studio-card:has(.studio-card-name){flex-flow:row wrap;align-items:center;column-gap:6px}
+.studio-card-name{flex-basis:100%;order:-1}
+.studio-card-name{font:600 var(--text-md)/1.2 var(--font-ui)}
+.studio-swatches{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.studio-swatch{width:44px;height:44px;padding:0;border:2px solid var(--paper);border-radius:50%;box-shadow:0 0 0 1px var(--gallery-line);cursor:pointer}
+.studio-swatch[aria-pressed=true]{box-shadow:0 0 0 2px var(--studio-on)}
+.studio-dot{display:inline-block;width:12px;height:12px;border:1px solid color-mix(in srgb,var(--ink) 14%,transparent);border-radius:50%}
+.studio-custom{display:inline-flex;align-items:center;gap:var(--space-2);margin-top:10px;color:var(--gallery-muted);font-size:var(--text-xs)}
+.studio-custom input{width:44px;height:44px;padding:2px;border:1px solid var(--gallery-line);border-radius:var(--r-sm);background:var(--gallery-paper)}
+.studio-surprise{justify-self:end;min-height:44px;padding:0 14px;border:1px dashed var(--studio-on);border-radius:var(--r-pill);background:none;color:var(--gallery-ink);font:600 var(--text-sm)/1 var(--font-ui);cursor:pointer}
+.studio-foot{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--gallery-line);background:var(--gallery-paper)}
+.studio-status{flex-basis:100%;margin:0;color:var(--gallery-muted);font-size:var(--text-xs)}
+.studio-status:empty{display:none}
+.studio-actions{display:flex;gap:8px;justify-content:flex-end;margin-left:auto}
+.studio-actions button,.studio-random{min-height:44px;padding:0 14px;border:1px solid var(--gallery-line);border-radius:var(--r-sm);background:var(--gallery-paper);color:var(--gallery-ink);font:600 var(--text-sm)/1 var(--font-ui);cursor:pointer}
+.studio-actions button:disabled,.studio-random:disabled{opacity:.45;cursor:default}
+.studio-actions .primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.studio-random{margin-right:auto}
+.studio-entry{display:grid;gap:8px;justify-items:start}
+/* :not(.primary): the Open Studio button is .primary (var(--accent), white text), so this paper style must not override it. */
+.studio-entry button:not(.primary){min-height:44px;padding:0 var(--space-4);border:1px solid var(--gallery-line);border-radius:var(--r-sm);background:var(--gallery-paper);font:600 var(--text-sm)/1 var(--font-ui);cursor:pointer}
+/* Phones: a sheet over the lower part of the screen. Kept last, so these win over the rules above. */
+@media (max-width:1100px){
+  .studio{left:0;right:0;bottom:0;height:62vh;height:62dvh;border-radius:var(--r-lg) var(--r-lg) 0 0;padding-bottom:env(safe-area-inset-bottom)}
+  .studio-kicker{display:none}
+  /* One header row: the cat switcher, then Return to town. */
+  .studio-top{display:flex;flex-direction:row-reverse;align-items:center;gap:8px;padding:6px 10px 6px 12px}
+  .studio-top-row{flex:none}
+  .studio-cat{flex:1;min-width:0;padding:0}
+  .studio-name{font-size:var(--text-lg)}
+  .studio-tabs{padding:6px 12px}
+  .studio-tab{min-height:var(--tap)}
+  .studio-body{padding:12px 14px 16px}
+  .studio-foot{flex-wrap:nowrap;padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+  .studio-random{margin-right:0;padding:0 12px}
+  .studio-actions button{padding:0 12px}
+  .studio-status{flex-basis:auto}
+}

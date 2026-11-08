@@ -1,0 +1,70 @@
+/* Projects panel: the Mayor's goal review, summary tiles, goal groups, and goal and request cards.
+   Every rule is scoped under #projects-body so it wins over the older rules in immersive.css. Tokens come from style.css. */
+
+#projects-body{display:flex;flex-direction:column;gap:14px;min-width:0}
+/* Buttons are the app's (style.css); here only their type. Approve and Ask the Mayor are primary there by class. */
+#projects-body button{font:500 var(--text-sm)/1.2 var(--font-ui)}
+/* .pp-count is a chip (style.css). */
+#projects-body .pp-count{min-width:26px}
+#projects-body .pp-title{font:600 14px/1.3 var(--font-ui,Inter,sans-serif);margin:0;color:var(--ink,#4b473d)}
+
+/* Review strip: the Mayor's removal suggestions, above everything else. */
+#projects-body .review-strip{background:var(--needs);border-radius:var(--r-md);box-shadow:var(--e1);padding:12px}
+#projects-body .review-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+#projects-body .review-list{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+/* .review-item, .pp-tile and .project-card are cards (style.css). */
+#projects-body .review-item{padding:10px 12px}
+#projects-body .review-title{margin:0;font:600 14px/1.35 var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
+#projects-body .review-reason{margin:4px 0 0;font-size:var(--text-sm);line-height:1.45;color:var(--ink-2);overflow-wrap:anywhere}
+#projects-body .review-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+#projects-body .review-foot{margin-top:10px;display:flex;justify-content:flex-end}
+
+/* Summary row: four tiles, two per row on a phone. */
+#projects-body .pp-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#projects-body .pp-tile{padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+#projects-body .pp-big{font:600 22px/1.1 var(--font-display,Georgia,serif);color:var(--ink,#4b473d);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Goal groups: collapsible, each with a count. */
+#projects-body .goal-list{display:flex;flex-direction:column;gap:6px;min-width:0}
+#projects-body .goal-heading-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+#projects-body .goal-heading{font:600 12px/1.3 var(--font-ui,Inter,sans-serif);letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#6b6758);margin:0}
+#projects-body .goal-section{border-top:1px solid var(--line,#e5e0d6);min-width:0}
+#projects-body .goal-section>summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font:600 14px/1.3 var(--font-ui,Inter,sans-serif);color:var(--ink,#4b473d);padding:4px 0}
+#projects-body .goal-section>summary::-webkit-details-marker{display:none}
+#projects-body .goal-section-title{flex:1 1 auto;min-width:0}
+/* An icon swap, not a rotation: a rotated box can overhang the right edge and make the list scroll sideways. Lucide chevrons (style.css). */
+#projects-body .goal-section>summary::after{content:'';flex:none;width:16px;height:16px;background:var(--ink-2);-webkit-mask:var(--icon-chevron-right) center/16px no-repeat;mask:var(--icon-chevron-right) center/16px no-repeat}
+#projects-body .goal-section[open]>summary::after{-webkit-mask-image:var(--icon-chevron-down);mask-image:var(--icon-chevron-down)}
+#projects-body .pp-empty{font-size:var(--text-sm);margin:6px 0 10px;padding:10px 12px;border:1px dashed var(--line);border-radius:var(--r-md);color:var(--ink-2)}
+
+/* Cards */
+#projects-body .project-list{list-style:none;margin:6px 0 4px;padding:0;display:grid;gap:12px;min-width:0}
+#projects-body .project-card{padding:14px;min-width:0;overflow-wrap:anywhere}
+#projects-body .project-card.is-demo{background:var(--needs)}
+#projects-body .project-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+#projects-body .project-head h3{font:600 16px/1.3 var(--font-display,Georgia,serif);margin:0;min-width:0;overflow-wrap:anywhere}
+#projects-body .project-counts{font-size:11.5px;color:var(--muted,#6b6758);margin:6px 0 0}
+
+/* Stat tiles on each card: two per row. */
+#projects-body .pp-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 0}
+#projects-body .pp-stat{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:2px;min-width:0;min-height:44px;margin:0;padding:8px 10px;border:0;border-radius:var(--r-sm);background:var(--paper-2);text-align:left;font:inherit;color:inherit}
+#projects-body .pp-stat.pp-tap{cursor:pointer}
+#projects-body .pp-label{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#6b6758)}
+#projects-body .pp-value{font:600 14px/1.25 var(--font-ui,Inter,sans-serif);color:var(--ink,#4b473d);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+#projects-body .pp-hint{font-size:11px;line-height:1.3;color:var(--muted,#6b6758);overflow-wrap:anywhere}
+#projects-body .pp-meter{display:block;height:6px;margin:4px 0 2px;border-radius:var(--r-pill);background:color-mix(in srgb,var(--ink) 10%,var(--paper));overflow:hidden}
+#projects-body .pp-meter i{display:block;height:100%;background:var(--accent)}
+
+/* Card text rows and actions. */
+#projects-body .project-last{font-size:13px;line-height:1.45;margin:10px 0 0;overflow-wrap:anywhere}
+#projects-body .project-meta{font-size:11.5px;margin:6px 0 0;color:var(--muted,#6b6758);overflow-wrap:anywhere}
+#projects-body .goal-note{font-size:12.5px;line-height:1.45;margin:8px 0 0;color:#8a5a14;overflow-wrap:anywhere}
+#projects-body .demo-goal-mode{color:#8a5a00;font-weight:600}
+#projects-body .project-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#projects-body .project-actions button{flex:1 1 130px}
+#projects-body .needs-you{display:block;width:100%;margin-top:10px;text-align:left;font-size:var(--text-sm);background:var(--needs);border-color:transparent;color:var(--needs-ink);overflow-wrap:anywhere}
+#projects-body .people{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+#projects-body .goal-budget{margin-top:10px;font-size:13px}
+#projects-body .goal-budget>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted,#6b6758)}
+#projects-body .goal-budget label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
+#projects-body .goal-budget input{width:9em}

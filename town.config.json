@@ -1,0 +1,214 @@
+{
+  "port": 8787,
+  "maxTurns": 16,
+  "maxDelegationDepth": 3,
+  "maxParallelWork": 3,
+  "setupCrew": ["scholar", "archivist"],
+  "recorder": "archivist",
+  "maxCats": 64,
+  "modelTimeoutMs": 300000,
+  "mailWatch": {"intervalSeconds": 120},
+  "planTimeoutStrikes":3,
+  "localModel": "qwen3.5:4b",
+  "planModel": "haiku",
+  "chatgptModel": "gpt-5-codex",
+  "localOptions": {"reasoning_effort": "none"},
+  "world": {
+    "chunkSize": 32,
+    "chunkRadius": 2,
+    "treeDensity": 5,
+    "layoutVersion": 5,
+    "layout": {
+      "scale": 1.2,
+      "site_spacing": 33.5,
+      "site_jitter": 0,
+      "keep_apart": 24,
+      "hall_out": 5.2,
+      "first_ring": 10.5,
+      "plot_area": 46,
+      "plots": 37,
+      "plot_radius": 18,
+      "main_radius": 22,
+      "plot_jitter": 0.45,
+      "door_jitter": 0.3,
+      "plaza_radius": 5.4,
+      "main_plaza": 10.8,
+      "house_radius": 3.4,
+      "door_out": 2.3,
+      "road_clearance": 0.75,
+      "stem_gap": 0.35,
+      "road_step": 1.5,
+      "road_iterations": 60,
+      "road_push_passes": 3,
+      "lamp_spacing": 7.5,
+      "gate_radius": 29,
+      "gate_cap": 0.92,
+      "half_width_local": 0.72,
+      "half_width_between": 0.98,
+      "memorial": [24, -24],
+      "memorial_reserve": 9,
+      "memorial_grounds": 7,
+      "memorial_door": 2.6,
+      "town_limit": 200,
+    "terrain": {
+      "seed": "cat-town-44",
+      "water_y": -1.6,
+      "plain_y": 0.4,
+      "floor": 1.0,
+      "hills": [0.011, 2.4],
+      "grain": [0.06, 0.22],
+      "rivers": 2,
+      "river_half_width": 3.4,
+      "river_clear": 120,
+      "river_spread": 20,
+      "bends": [0.0042, 30],
+      "kinks": [0.015, 7],
+      "bed": 1.0,
+      "bank_y": 0.9,
+      "valley": 24,
+      "bank": 6,
+      "dry_margin": 0.7,
+      "dry_probe": 3,
+      "hold_ease": 14,
+      "knolls": [0.016, 3.2],
+      "knoll_clear": [2, 18],
+      "clearing": {
+        "meadow_radii": 1.5,
+        "forest_radii": 2.6,
+        "meadow_tree_chance": 0.05,
+        "orchard_below": 0.45,
+        "orchard_blossom": 0.4,
+        "meadow_flowers": 0.15,
+        "road_clear": 3,
+        "road_fade": 12,
+        "road_floor": 0.3
+      }
+    }
+    }
+  },
+  "quests": {"staleMinutes": 30, "recentHours": 24},
+  "goals": {"roundPauseSeconds": 60, "maxRoundsPerDay": null, "tokenBudget": null},
+  "effects": {"dedupeHours": 24, "repeatMinutes": 10},
+  "snapshot": {"messages": 20, "events": 40, "approvals": 5, "messagesPerChat": 50, "tasksPerCat": 20},
+  "hermes": {"enabled": false, "port": 18642, "python": null},
+  "tools": {"fetchUrl": true, "webSearch": true, "claudeCode": true, "claudeCodeMinutes": 15, "browse": true, "browseMinutes": 10},
+  "remote": {
+    "pairingTtlMs": 300000,
+    "deviceTtlMs": 2592000000,
+    "maxDevices": 12,
+    "attemptWindowMs": 60000,
+    "maxPairAttempts": 20,
+    "pollMs": 2500,
+    "tunnelTimeoutMs": 45000,
+    "port": 8788
+  },
+  "ntfy": {"server": "https://ntfy.sh"},
+  "cats": [
+    {
+      "id": "mayor",
+      "name": "Mayor",
+      "role": "Coordinate the town. Delegate by expertise, summarize results, and bring owner-only decisions to the owner.",
+      "color": "#e6b866",
+      "icon": "✦"
+    }
+  ],
+  "roleCatalogue": [
+    {
+      "id": "scholar",
+      "name": "Scholar",
+      "role": "Research opportunities. Distinguish verified evidence from hypotheses; you have no web tool yet.",
+      "color": "#9aacf2",
+      "icon": "✧",
+      "style": "scholar"
+    },
+    {
+      "id": "banker",
+      "name": "Banker",
+      "role": "Review costs and model usage. Unknown costs stay unknown. You cannot spend money.",
+      "color": "#a5c98c",
+      "icon": "◈",
+      "style": "banker"
+    },
+    {
+      "id": "critic",
+      "name": "Critic",
+      "role": "Challenge assumptions and review actual artifacts. Do not claim a test passed without evidence.",
+      "color": "#df9d9b",
+      "icon": "◇",
+      "style": "critic"
+    },
+    {
+      "id": "builder",
+      "name": "Builder",
+      "role": "Plan and draft products and implementations. No shell or deployment tool is connected.",
+      "color": "#dcab7e",
+      "icon": "⌂",
+      "style": "builder"
+    },
+    {
+      "id": "merchant",
+      "name": "Merchant",
+      "role": "Draft offers and sales experiments. Do not claim anything has been published or sold.",
+      "color": "#c2a1d6",
+      "icon": "❋",
+      "style": "merchant"
+    },
+    {
+      "id": "operator",
+      "name": "Operator",
+      "role": "Plan fulfillment and operational checks. No external accounts are connected.",
+      "color": "#88c6c1",
+      "icon": "◎",
+      "style": "operator"
+    },
+    {
+      "id": "archivist",
+      "name": "Archivist",
+      "role": "Summarize evidence and lessons with provenance. Unsupported claims remain hypotheses.",
+      "color": "#b9b4a5",
+      "icon": "▤",
+      "style": "archivist"
+    },
+    {
+      "id": "artist",
+      "name": "Artist",
+      "role": "Showcase media and image generation, visual work and web pages. Describe what was actually made; nothing is published unless the owner says so.",
+      "color": "#e58fb8",
+      "icon": "✿"
+    }
+  ],
+  "council": {
+    "minimumPeers": 2,
+    "protectedCats": [
+      "mayor"
+    ],
+    "maxEvidenceTasks": 5,
+    "idleDays": 7
+  },
+  "workshop": {
+    "autoSetup": true
+  },
+  "economy": {
+    "startingCoins": 1000,
+    "ticksPerDay": 4,
+    "days": 7,
+    "baseDemand": 6,
+    "baseUpkeep": 4,
+    "upkeepDivisor": 10,
+    "elasticity": 1.5,
+    "maxPrice": 500,
+    "maxActionsPerTick": 1,
+    "defaultEnvelope": 50,
+    "autonomy": {
+      "full": {"envelopeMultiplier": 2},
+      "balanced": {"envelopeMultiplier": 1},
+      "cautious": {"envelopeMultiplier": 0.5}
+    },
+    "spendExpiryTicks": 2,
+    "maxCapabilities": 10,
+    "knownTools": [
+      {"kind": "repo", "source": "https://github.com/morluto/rea", "purpose": "A reverse-engineering tool."},
+      {"kind": "repo", "source": "https://github.com/harry0703/MoneyPrinterTurbo", "purpose": "Generate short narrated videos from a topic (script, stock footage, voice, subtitles). Needs Pexels or Pixabay API keys and an LLM provider, both set in its own config.toml."}
+    ]
+  }
+}

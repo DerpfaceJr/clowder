@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_change_link"
+        android:title="@string/menu_change_link"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/menu_reload"
+        android:title="@string/menu_reload"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/menu_details"
+        android:title="@string/menu_details"
+        android:showAsAction="never" />
+</menu>

@@ -1,0 +1,11 @@
+{
+  "port": 8790,
+  "localModel": "qwen3.5:4b",
+  "planModel": "sonnet",
+  "economy": {
+    "days": 3
+  },
+  "remote": {
+    "provider": "cloudflare"
+  }
+}

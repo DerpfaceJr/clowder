@@ -1,0 +1,66 @@
+/* Chat sheet (plan 5.6, 5.8): the composer's one Options chip and its popover, a text box that grows with its text and
+   never with focus (so the decision strip above it stays put after typing), the tabs' More menu, the first-launch
+   "Sign in to a brain" card and the note on a Demonstration reply. Loaded after immersive.css, so an equal selector wins
+   here. Colours and sizes are the style.css :root tokens. */
+
+/* Composer: [Options] [text box] [Send] share one row at every width. Without an option to offer, the chip hides. */
+.immersive .inspector #chat-form{grid-template-columns:auto minmax(0,1fr) 44px}
+.immersive .inspector #chat-form:has(> #composer-options[hidden]){grid-template-columns:minmax(0,1fr) 44px}
+.immersive .inspector #chat-form>textarea,.immersive .inspector #chat-form>div{grid-column:auto}
+.immersive .inspector #chat-form>textarea,.immersive .inspector #chat-form>textarea:focus{height:44px;transition:none}
+
+.composer-options-chip{min-height:var(--tap);max-width:11em;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--paper-2);color:var(--ink);font:600 13px var(--font-ui)}
+.composer-options-chip[hidden]{display:none}
+.composer-options-chip[aria-expanded=true]{border-color:var(--accent)}
+.composer-options-chip.is-on{background:var(--green);border-color:var(--green);color:var(--paper)}
+
+/* The popover opens above the composer over the conversation, like the slash list, so nothing below it moves. */
+.immersive .inspector #chat-form>.composer-options{position:absolute;grid-column:auto;justify-content:normal;left:0;bottom:calc(100% + 6px);z-index:4;display:grid;gap:2px;width:max-content;min-width:min(100%,280px);max-width:100%;padding:6px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);box-shadow:0 -6px 24px #1f2a2026}
+.immersive .inspector #chat-form>.composer-options[hidden]{display:none}
+.immersive .inspector #chat-form .composer-options>label:not([hidden]){display:flex;align-items:center;gap:10px;min-height:var(--tap);margin:0;padding:0 10px;border-radius:var(--radius-control);font-size:14px;color:var(--ink);cursor:pointer}
+.immersive .inspector #chat-form .composer-options>label[hidden]{display:none}
+.immersive .inspector .composer-options>label:hover{background:var(--paper-2)}
+.immersive .inspector .composer-options input{width:18px;height:18px;margin:0;flex:0 0 auto;accent-color:var(--green)}
+
+/* Touch-size targets at every width (1024 px is often a tablet): the decision strip's buttons, Send and the tabs. */
+.immersive .inspector .approval-open,.immersive .inspector .approval-quick button{min-height:var(--tap)}
+.immersive .inspector #chat-form #send{width:44px;height:44px;min-height:44px}
+.immersive .inspector .tabs button{min-height:var(--tap);min-width:var(--tap)}
+
+/* Tabs: those that do not fit go under More, which shows as the open tab when the open one is under it. */
+.immersive .inspector .tabs{position:relative}
+.immersive .inspector .tabs>.tab-overflow{display:none}
+.immersive .inspector .tabs.tabs-measuring>button{flex:0 0 auto}
+.immersive .inspector .tabs>.tabs-more{flex:0 0 auto;min-height:var(--tap);margin-left:auto;white-space:nowrap}
+.immersive .inspector .tabs>.tabs-more[hidden]{display:none}
+.immersive .inspector .tabs-more-menu{position:absolute;right:0;top:100%;z-index:4;display:grid;gap:2px;min-width:180px;padding:6px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);box-shadow:0 8px 24px #1f2a2026}
+.immersive .inspector .tabs-more-menu[hidden]{display:none}
+.immersive .inspector .tabs .tabs-more-menu button{flex:none;min-height:var(--tap);min-width:0;padding:0 12px;border:0;border-radius:var(--radius-control);background:none;color:var(--ink);font-size:14px;text-align:left}
+.immersive .inspector .tabs .tabs-more-menu button:hover,.immersive .inspector .tabs .tabs-more-menu button[aria-pressed=true]{background:var(--paper-2)}
+.immersive .inspector .tabs .tabs-more-menu button[aria-pressed=true]{font-weight:600;color:var(--accent)}
+
+/* First launch: with no model signed in, the card sits above the decision strip and the composer. */
+.immersive .inspector .brain-card{flex:0 0 auto;display:flex;align-items:center;gap:10px;margin:6px var(--pad,0px) 0;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper-2)}
+.immersive .inspector .brain-card[hidden],#inspector-panel.memory-expanded .brain-card{display:none}
+.brain-card p{flex:1 1 auto;min-width:0;margin:0;font-size:13px;line-height:1.4;color:var(--ink)}
+.brain-card button{flex:0 0 auto;min-height:var(--tap);padding:0 14px;border-radius:var(--radius-control);font-weight:600;white-space:nowrap}
+.brain-card button[hidden]{display:none}
+/* The card already says replies are canned, so the composer's own Demonstration line waits until a model is signed in. */
+.immersive .inspector:has(#brain-card:not([hidden])) #chat-form>.demo-warning{display:none}
+
+/* A canned Demonstration reply: one plain line above the bubble. */
+.chat-message .demo-reply-note{margin:0 0 4px;padding:3px 8px;font-size:12px;line-height:1.4}
+
+/* Phones and tablets: the sheet itself scrolls when it is short (the keyboard is up), so the composer is pinned to its bottom
+   edge and the decision strip sits right on top of it. Answer stays on screen while typing. */
+@media(max-width:768px){
+  .immersive .inspector #chat-form{position:sticky;bottom:0;z-index:3}
+  .immersive .inspector #approvals{position:sticky;bottom:var(--composer-h,56px);z-index:3;background:var(--paper)}
+}
+
+@media(max-width:599px){
+  .immersive .inspector #chat-form{grid-template-columns:auto minmax(0,1fr) 44px}
+  .immersive .inspector #chat-form:has(> #composer-options[hidden]){grid-template-columns:minmax(0,1fr) 44px}
+  .composer-options-chip{max-width:8.5em;padding:0 10px}
+  .immersive .inspector .tabs>.tabs-more{flex:0 0 auto}
+}

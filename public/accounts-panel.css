@@ -1,0 +1,54 @@
+/* Accounts & connections (accounts-panel.js): a centred dialog on desktop and a full-screen page with a back pill on phones, like Telegram.
+   Colours are the theme tokens in style.css; the status dot, chips, tool rows, Allow/Ask/Off, directory rows and messages reuse the
+   connectors panel's cx- classes. Every control is at least the 44px tap target. */
+#accounts-dialog{width:min(720px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:88dvh;margin:auto;padding:0 20px 20px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
+#accounts-dialog [hidden]{display:none!important}
+#accounts-dialog .ac-top{position:sticky;top:0;z-index:2;gap:8px;min-height:56px;margin:0 -20px;padding:8px 12px 4px 20px;background:var(--paper)}
+#accounts-dialog h2{margin:2px 0 6px;font:26px/1.15 var(--font-display)}
+#accounts-dialog .ac-lede{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
+.ac-body{display:grid;gap:14px;min-width:0}
+#accounts-dialog button:not(.close-x){font-size:14px}
+#accounts-dialog :is(.ac-actions,.ac-section,.ac-token,.ac-another-box,.ac-details,.ac-model)>button{justify-self:start;white-space:nowrap}
+#accounts-dialog .ac-quiet{background:var(--paper);color:var(--ink)}
+#accounts-dialog input:not([type=checkbox]):not([type=radio]){width:100%;min-width:0;margin:0;font-size:16px}
+#accounts-dialog .cx-open{margin:0;justify-self:start}
+#accounts-dialog .cx-msg{font-size:13px}
+.ac-summary{display:grid;gap:4px}
+#accounts-dialog .ac-count{margin:0;font-size:15px;font-weight:600;color:var(--ink)}
+#accounts-dialog .ac-secrets{margin:0;font-size:12px;line-height:1.45;color:var(--muted)}
+#accounts-dialog .ac-secrets.warn{color:var(--ink);padding-left:8px;border-left:3px solid var(--line)}
+.ac-section{min-width:0}
+#accounts-dialog .ac-hint{margin:0;font-size:13px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}
+#accounts-dialog .ac-sub{margin:4px 0 0;font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.ac-services,.ac-accounts,.ac-models{display:grid;gap:10px;margin:0;padding:0;list-style:none;min-width:0}
+.ac-service{gap:10px}
+.ac-service-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+#accounts-dialog .ac-service-name{font:600 17px/1.3 var(--font-display);overflow-wrap:anywhere}
+.ac-account{display:grid;gap:8px;min-width:0}
+.ac-account+.ac-account{padding-top:10px;border-top:1px solid var(--line)}
+.ac-refs{gap:0;padding:2px 14px 12px}
+.ac-refs .ac-account{padding-top:10px}
+.ac-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:6px 12px;flex-wrap:wrap;min-width:0}
+.ac-row-title{display:grid;gap:2px;min-width:0;flex:1 1 200px}
+.ac-row-title strong{font-size:15px;overflow-wrap:anywhere}
+#accounts-dialog .ac-who{margin:0;font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+#accounts-dialog .ac-who.muted{color:var(--muted)}
+#accounts-dialog .ac-health{margin-top:2px;font-size:13px;color:var(--ink);white-space:nowrap}
+#accounts-dialog .ac-expiry,#accounts-dialog .ac-reason{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.ac-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ac-details,.ac-token-box,.ac-another-box{display:grid;gap:8px;min-width:0;padding:12px;border-radius:var(--r-md);background:var(--paper-2)}
+.ac-token{display:flex;gap:8px;min-width:0}
+.ac-token input{flex:1 1 auto}
+.ac-two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ac-model{display:flex;align-items:center;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;min-width:0}
+.ac-model-name{flex:1 1 160px;min-width:0;font-size:14px;overflow-wrap:anywhere}
+.ac-dir,.ac-dir-group{display:grid;gap:8px;min-width:0}
+.ac-dir{gap:12px}
+#accounts-dialog .cx-row>button{min-width:var(--tap)}
+
+@media(max-width:600px){
+  #accounts-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  #accounts-dialog .ac-top{margin:0 -16px;padding:max(8px,env(safe-area-inset-top,0px)) 16px 4px}
+  .ac-token{flex-wrap:wrap}
+  .ac-token>button{flex:1 1 100%}
+}

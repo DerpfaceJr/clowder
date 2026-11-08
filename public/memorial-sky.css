@@ -1,0 +1,62 @@
+/* Memorial: a full-screen night sky over the town. The <dialog> is the layer (memorial-view.js opens and closes it); memorial.js draws the chart. */
+.memorial-view{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:hidden;background:#0b0f2e;color:#e6ecff;font-family:var(--font-ui)}
+.memorial-view::backdrop{background:#05071a}
+.memorial-view[open]{display:block}
+/* The zoom (memorial-transition.js). Each look clears the opaque backdrop so the town shows through while it runs.
+   zoom-reveal: the sky opens from the telescope lens (--mx, --my) outward, fading and settling from a slight scale.
+   zoom-fade: the plain crossfade (reduced motion, or no 3D scene). zoom-leave: the sky fades back to the town. */
+@property --memorial-reveal{syntax:'<percentage>';inherits:false;initial-value:150%}
+.memorial-view:is(.zoom-reveal,.zoom-fade,.zoom-leave)::backdrop{background:transparent;backdrop-filter:none}
+.memorial-view.zoom-reveal{transform-origin:var(--mx,50%) var(--my,50%);-webkit-mask-image:radial-gradient(circle at var(--mx,50%) var(--my,50%),#000 calc(var(--memorial-reveal) - 30%),transparent var(--memorial-reveal));mask-image:radial-gradient(circle at var(--mx,50%) var(--my,50%),#000 calc(var(--memorial-reveal) - 30%),transparent var(--memorial-reveal));animation:memorial-reveal .5s cubic-bezier(.3,0,.2,1) both}
+.memorial-view.zoom-fade{animation:memorial-in .25s ease-out both}
+.memorial-view.zoom-leave{animation:memorial-in .35s ease-in reverse both}
+@keyframes memorial-in{from{opacity:0}to{opacity:1}}
+@keyframes memorial-reveal{from{--memorial-reveal:0%;opacity:.35;transform:scale(1.12)}to{--memorial-reveal:160%;opacity:1;transform:none}}
+/* The page chrome steps aside for the flight and comes back as the camera returns. */
+body.memorial-zooming :is(header,.town-dock,#labels,.world-controls,.world-hint,.world-title,footer){opacity:0;transition:opacity .45s ease}
+/* No taps on the town or its chrome while the camera flies either way (labels set pointer-events:auto themselves). */
+body:is(.memorial-zooming,.memorial-unzooming) :is(#canvas-wrap,header,.town-dock,.world-controls,footer),body:is(.memorial-zooming,.memorial-unzooming) :is(#canvas-wrap,header,.town-dock,.world-controls,footer) *{pointer-events:none}
+body.memorial-unzooming :is(header,.town-dock,#labels,.world-controls,.world-hint,.world-title,footer){animation:memorial-in .6s ease-out both}
+.memorial-head{position:absolute;z-index:4;top:0;left:0;right:0;display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(14px + env(safe-area-inset-left));pointer-events:none}
+.memorial-title{font:600 var(--text-xs)/44px var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:#cfe9ff;text-shadow:0 0 12px #6fdcff80}
+/* The controls are the shared shapes in dark glass: the back pill and the chips are pills, Restore is a button (--r-sm). Each keeps
+   its 44px target and takes --text-sm, the glass blur token, a hairline of light on top, a scale(.97) press, and hover only where
+   there is a pointer. The colours are the Memorial's own night palette, as before. */
+.memorial-close{pointer-events:auto;display:inline-flex;align-items:center;gap:6px;min-height:44px;min-width:44px;padding:0 var(--space-4);border:1px solid #7fe3ff40;border-radius:var(--r-pill);background:#0d1235a6;color:#eaf6ff;font:600 var(--text-sm)/1 var(--font-ui);backdrop-filter:var(--glass-blur);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--paper) 14%,transparent);cursor:pointer;transition:border-color var(--dur-base) var(--ease-out),transform var(--dur-quick) var(--ease-out)}
+.memorial-close:focus-visible{border-color:#7fe3ff99;color:#fff}
+@media(hover:hover){.memorial-close:hover{border-color:#7fe3ff99;color:#fff}}
+/* The exit is the back-pill (style.css), top-left, ahead of the title. */
+.memorial-head .back-pill{order:-1}
+#memorial-body{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0}
+.sky-wrap{position:absolute;inset:0;display:flex;flex-direction:column}
+.sky-holder{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0}
+.sky-tools{position:absolute;z-index:3;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));pointer-events:none}
+.sky-chip{pointer-events:auto;min-height:44px;min-width:44px;padding:0 var(--space-4);border:1px solid #7fe3ff33;border-radius:var(--r-pill);background:#0d1235a6;color:#cfe9ff;font:600 var(--text-sm)/1 var(--font-ui);backdrop-filter:var(--glass-blur);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--paper) 14%,transparent);cursor:pointer;transition:border-color var(--dur-base) var(--ease-out),background var(--dur-base) var(--ease-out),transform var(--dur-quick) var(--ease-out)}
+.sky-chip:focus-visible{border-color:#7fe3ff99;color:#fff}
+@media(hover:hover){.sky-chip:hover{border-color:#7fe3ff99;color:#fff}}
+.memorial-close:active,.sky-chip:active,.sky-restore:active{transform:scale(.97)}
+/* The List chip is pressed in list view; the shared button[aria-pressed] style would turn it cream. */
+.sky-chip[aria-pressed=true]{background:#7fe3ff2e;border-color:#7fe3ff99;color:#fff}
+.sky{position:absolute;inset:0;overflow:hidden;background:#171c4d;isolation:isolate}
+.sky-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.sky-canvas:active{cursor:grabbing}
+/* The empty sky's line: --text-lg at full strength (it was 13px at 85%), centred under the middle star, with the title's glow. */
+.sky-empty{position:absolute;left:var(--space-6);right:var(--space-6);top:53%;max-width:32ch;margin:0 auto;text-align:center;color:#e6ecff;font-size:var(--text-lg);line-height:1.5;text-shadow:0 0 12px #6fdcff80}
+/* Visually hidden list: the stars for keyboards and screen readers. Focusing one opens its card. */
+.sky-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;list-style:none}
+.sky-card{position:absolute;z-index:4;width:240px;max-height:calc(100% - 16px);overflow-y:auto;padding:var(--space-3) 14px;border:1px solid #8ee8ff40;border-radius:var(--r-md);background:#141a48b8;color:#eef3ff;box-shadow:0 8px 30px #02041080,0 0 18px #6fdcff26;backdrop-filter:blur(10px)}
+.sky-card strong{display:block;font-size:var(--text-md);color:#fff;padding-right:44px}
+.sky-card small{display:block;color:#9fd8f0;margin:2px 0 6px;font-size:var(--text-xs)}
+.sky-card p{margin:4px 0;font-size:var(--text-sm);line-height:1.45;color:#d7def7;overflow-wrap:anywhere}
+.sky-card details summary{font-size:var(--text-xs);cursor:pointer;padding:13px 0;color:#9fd8f0}
+.sky-close{position:absolute;top:2px;right:2px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:#cfe9ff;font-size:20px;cursor:pointer}
+.sky-restore{margin-top:var(--space-2);min-height:44px;padding:6px var(--space-4);border:1px solid #8ee8ff80;border-radius:var(--r-sm);background:#6fdcff26;color:#eaffff;font-size:var(--text-sm);font-weight:600;cursor:pointer;transition:transform var(--dur-quick) var(--ease-out)}
+.sky-restore:disabled{opacity:.5;cursor:default}
+.sky-list{position:absolute;inset:0;padding:64px calc(16px + env(safe-area-inset-right)) 76px calc(16px + env(safe-area-inset-left));overflow-y:auto}
+.sky-list .task-card{background:#1a2056;border:1px solid #2f3780;color:#e6ecff;border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px}
+.sky-list .task-card small,.sky-list .task-card summary{color:#9fd8f0}
+.sky-list .muted{color:#b8c3ee}
+@media(max-width:600px){
+  .sky-card{left:8px!important;right:8px;top:auto!important;bottom:76px;width:auto;max-height:60%}
+}
+@media(prefers-reduced-motion:reduce){.sky-card,.sky-chip,.memorial-close,.sky-restore{transition:none}.memorial-close:active,.sky-chip:active,.sky-restore:active{transform:none}}

@@ -1,0 +1,18 @@
+import {readFileSync,mkdtempSync,writeFileSync,mkdirSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {Store} from '../src/store.ts';
+import {Town} from '../src/engine.ts';
+import {openAIProvider} from '../src/provider.ts';
+const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
+const dir=mkdtempSync(join(tmpdir(),'cat-town-live-'));
+const store=new Store(join(dir,'events.jsonl'),config.cats);
+const town=new Town(store,config,{local:openAIProvider('http://127.0.0.1:11434/v1',config.localModel,config.modelTimeoutMs,undefined,config.localOptions)});
+const task=town.submit('scholar','Reply with one short sentence describing your role. Do not call any tools.','local');
+const start=Date.now();
+while(!['done','failed','cancelled'].includes(store.state.tasks.find(t=>t.id===task)!.status))await new Promise(r=>setTimeout(r,250));
+const evidence={model:config.localModel,source:join(dir,'events.jsonl'),elapsedMs:Date.now()-start,task:store.state.tasks.find(t=>t.id===task),usage:store.state.usage};
+mkdirSync(new URL('../data/',import.meta.url),{recursive:true});
+writeFileSync(new URL('../data/live-smoke.json',import.meta.url),JSON.stringify(evidence,null,2));
+console.log(JSON.stringify(evidence));
+process.exitCode=evidence.task?.status==='done'?0:1;

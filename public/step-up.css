@@ -1,0 +1,17 @@
+/* Passkey step-up (step-up.js): the phone's Passkey page, a centred dialog on wide screens and a full-screen page on phones, and the passkey
+   line under an owner device in Devices on the computer. Colours are the theme tokens in style.css; messages reuse the connectors' .cx-msg. */
+#step-up-dialog{width:min(480px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:88dvh;margin:auto;padding:20px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
+#step-up-dialog [hidden]{display:none!important}
+#step-up-dialog h2{margin:2px 56px 12px 0;font:500 var(--text-xl)/1.2 var(--font-display)}
+.step-up-body{display:grid;gap:12px}
+.step-up-lede{margin:0;font-size:var(--text-sm);line-height:1.5;color:var(--ink-2)}
+.step-up-line{margin:0;font-size:var(--text-md);line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
+.step-up-line[data-fresh]{color:var(--accent);font-weight:600}
+.step-up-actions{display:flex;flex-wrap:wrap;gap:8px}
+.step-up-actions button{min-height:var(--tap);padding:0 var(--space-4);border-radius:var(--r-sm);font-size:var(--text-sm);font-weight:600}
+#paired-devices .passkey-line{overflow-wrap:anywhere}
+
+@media(max-width:600px){
+  #step-up-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:max(16px,env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  .step-up-actions button{flex:1 1 100%}
+}

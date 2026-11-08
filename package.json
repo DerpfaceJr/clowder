@@ -1,0 +1,89 @@
+{
+  "name": "clowder",
+  "productName": "Clowder",
+  "version": "0.1.0",
+  "description": "Clowder, a small town of cats that work together",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "engines": {
+    "node": ">=24.22.0"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "android": "powershell -ExecutionPolicy Bypass -File scripts/android/build-apk.ps1",
+    "test": "tsx --test test/*.test.ts test/*.test.mjs",
+    "check": "tsc --noEmit",
+    "season": "tsx src/season.ts",
+    "desktop": "electron .",
+    "desktop:build": "node scripts/write-build-info.mjs && node scripts/fetch-hermes-runtime.mjs && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.derpfacejr.clowder",
+    "productName": "Clowder",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "asar": false,
+    "files": [
+      "**/*",
+      "!data/**",
+      "!docs/**",
+      "!test/**",
+      "!scripts/**",
+      "scripts/workshop/**/*",
+      "!town.local.json",
+      "!town.local.example.json",
+      "!dist-desktop/**",
+      "!*.log",
+      "!build/**",
+      "!.claude/**",
+      "!.github/**",
+      "!android/**",
+      "!dist-android/*.idsig",
+      "!dist-desktop-test/**",
+      {
+        "from": "node_modules/three/examples/jsm",
+        "to": "node_modules/three/examples/jsm",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "include": "build/installer.nsh",
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "DerpfaceJr",
+      "repo": "clowder",
+      "releaseType": "draft"
+    }
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.10",
+    "@playwright/mcp": "0.0.83",
+    "croner": "10.0.1",
+    "electron-updater": "6.8.11",
+    "fastify": "^5.0.0",
+    "qrcode-generator": "1.4.4",
+    "three": "0.186.1",
+    "tsx": "^4.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^45.0.0",
+    "electron-builder": "26.18.0",
+    "typescript": "^5.9.0"
+  }
+}

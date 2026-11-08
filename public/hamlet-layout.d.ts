@@ -1,0 +1,31 @@
+// Types for the pure hamlet geometry in hamlet-layout.js (the server imports it; tsc reads these declarations).
+export type Pt={x:number;z:number};
+export type Layout=Record<string,any>&{scale:number;plots:number;house_radius:number;plaza_radius:number;main_plaza:number;memorial:number[];memorial_reserve:number;town_limit:number;hall_out:number;door_out:number;stem:number;plot_area:number;first_ring:number;plot_radius:number;main_radius:number;plot_jitter:number;road_clearance:number;keep_apart:number;site_spacing:number;site_jitter:number;door_jitter:number;half_width_local:number;half_width_between:number};
+export type GroupLike={id:string;site:{index:number;x:number;z:number}};
+export type HomeLike={x:number;z:number;group?:string;plot?:number};
+export function resolveLayout(raw:unknown):Layout;
+export function seeded(text:string):()=>number;
+export function siteCentre(index:number,L:Layout):{index:number;x:number;z:number};
+export function dryAt(x:number,z:number,L:Layout):boolean;
+export function siteDry(c:Pt,L:Layout):boolean;
+export function planSite(sites:Pt[],L:Layout):{index:number;x:number;z:number};
+export const FOUNTAIN:{r:number};
+export function plazaOf(site:Pt&{index?:number},L:Layout):number;
+export function childSlots(index:number,L:Layout):{index:number;x:number;z:number}[];
+export function groupReach(groupId:string,L:Layout):number;
+export function siteFree(c:Pt,sites:Pt[],L:Layout):boolean;
+export function regather(cats:any[],groups:any[],raw:any):{groups:any[];homes:{id:string;home:any;group:string}[]};
+export function plotSpot(site:Pt,k:number,groupId:string,L:Layout):Pt|null;
+/** The notice board's size in metres (hamlet-layout.js). */
+export const BOARD:{half:number;depth:number;top:number;face:number};
+export function roadGap(p:Pt,roads?:{points:number[][];width:number}[]):number;
+export function plotFree(p:Pt,homes:Pt[],groups:{site:Pt}[],L:Layout,roads?:{points:number[][];width:number}[]):boolean;
+export function placeInGroup(group:GroupLike,homes:HomeLike[],groups:{site:Pt}[],L:Layout,roads?:{points:number[][];width:number}[]):{plot:number;x:number;z:number}|null;
+export function homeProblem(x:number,z:number,homes:Pt[],groups:{site:Pt}[],L:Layout):string|null;
+export function townLayout(cats:any[],groups:any[],raw:unknown):any;
+export function hallSpot(site:Pt,L:Layout):Pt;
+export function doorYaw(x:number,z:number,site:Pt,plot:number|undefined,groupId:string,L:Layout):number;
+export function ringRadius(L:Layout,site?:Pt&{index?:number}):number;
+export function routeRoad(waypoints:number[][],circles:{x:number;z:number;r:number}[],L:Layout):number[][];
+export function homeYaw(cat:any,groups:any[],raw:unknown):number;
+export function memorialSpot(L:Layout):{x:number;z:number;yaw:number;reserve:number;grounds:number;door:number[];stem:number[]};

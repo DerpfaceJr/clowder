@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Clowder</string>
+    <string name="setup_message">Paste the pairing link from Devices on your computer. Clowder remembers it, so you only do this once.</string>
+    <string name="error_message">Your town\'s address may have changed. Paste the new pairing link from Devices on your computer.</string>
+    <string name="paste_hint">https://…trycloudflare.com/#pair=…</string>
+    <string name="connect">Connect</string>
+    <string name="retry">Retry</string>
+    <string name="menu_change_link">Change town link</string>
+    <string name="menu_reload">Reload</string>
+    <string name="menu_details">Connection details</string>
+    <string name="details_town">Town address: %1$s</string>
+    <string name="details_none">none</string>
+    <string name="details_cookie">Sign-in cookie visible to the app: %1$s</string>
+    <string name="details_saved">Sign-in saved: %1$s</string>
+    <string name="details_follow">Finds the town after restarts: %1$s</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="bad_link">Paste the whole https pairing link.</string>
+    <string name="confirm_title">Use this address?</string>
+    <string name="confirm_message">Clowder normally connects to *.trycloudflare.com or *.ts.net. Use %1$s anyway?</string>
+    <string name="confirm_use">Use it</string>
+    <string name="cancel">Cancel</string>
+    <string name="town_updated">Town link updated.</string>
+    <string name="offline_message">Your town is offline. Clowder reconnects on its own when your computer is back.</string>
+    <string name="no_app_for_link">No app can open that link.</string>
+</resources>

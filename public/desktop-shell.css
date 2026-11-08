@@ -1,0 +1,49 @@
+/* Electron desktop shell only. index.html adds html.desktop-app when the page runs in Electron (see desktop/main.cjs, titleBarStyle hidden).
+   The header is the window's title bar: it drags, its controls don't, and the caption buttons keep their room on the right. */
+html.desktop-app header {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+html.desktop-app header a,
+html.desktop-app header button,
+html.desktop-app header input,
+html.desktop-app header select,
+html.desktop-app header textarea,
+html.desktop-app header label,
+html.desktop-app header summary,
+html.desktop-app header [role="button"] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+/* Window Controls Overlay: the caption buttons sit on the right of the titleBarOverlay band. The fallback (144px, three Windows caption buttons) applies when the env values are missing. */
+html.desktop-app .header-actions {
+  margin-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 144px)));
+}
+/* The floating header becomes the window's title bar: flush with the top and both edges, solid paper like the caption-button
+   band (titleBarOverlay in desktop/main.cjs), so minimise, maximise and close sit inside it instead of in a separate box. */
+html.desktop-app {
+  --header-top: 0px;
+}
+/* The caption buttons sit above any page content in their corner, so a sheet that starts at the window's top edge would put
+   its own close button under the window's: the settings side sheet (1101px and up) starts below the title bar instead. */
+@media (min-width: 1101px) {
+  html.desktop-app .town-menu {
+    top: var(--header-h, 56px);
+    height: calc(100dvh - var(--header-h, 56px));
+    max-height: calc(100dvh - var(--header-h, 56px));
+  }
+}
+/* Dialogs and sheets never drag the window, even where they cover the header's drag strip. */
+html.desktop-app :is(dialog, [role="dialog"]) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+html.desktop-app .immersive header {
+  left: 0;
+  right: 0;
+  border-radius: 0;
+  background: var(--paper);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--e1);
+}

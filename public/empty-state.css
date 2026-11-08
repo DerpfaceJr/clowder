@@ -1,0 +1,7 @@
+/* The empty-state grammar (empty-state.js): the 48px cat-ear picture, one sentence, at most one action. Tokens only. */
+.empty-state{display:flex;flex-direction:column;align-items:center;gap:var(--space-3);margin:var(--space-6) auto;padding:0 var(--space-4);max-width:34ch;text-align:center}
+.empty-state p{margin:0;font-size:var(--text-md);line-height:1.5;color:var(--ink-2)}
+.empty-state button{min-height:var(--tap);padding:0 var(--space-5);font-weight:600}
+.empty-art{display:block;flex:none;overflow:visible}
+.empty-art .empty-ear,.empty-art .empty-tile{fill:var(--owner-bubble)}
+.empty-art .empty-icon{color:var(--accent-strong)}

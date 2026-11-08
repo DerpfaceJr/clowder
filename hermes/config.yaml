@@ -1,0 +1,55 @@
+# Clowder's Hermes config (docs/research/hermes-adaptation.md 4.1, with the fixes of hermes-spike.md). src/hermes.ts writes it into Clowder's own
+# HERMES_HOME on every start, so edits there are replaced. No secrets here: the API server key is in .env, the gate token in Hermes's environment.
+_config_version: 51     # v0.22.5's schema, so Hermes migrates nothing; check it on every pin bump
+approvals:
+  mode: manual          # no guardian model
+  timeout: 4294000      # a park outlives any wait; Windows caps it at about 49.7 days
+  cron_mode: deny
+  unattended_mode: deny
+gateway:
+  api_server:
+    enabled: true
+    host: 127.0.0.1
+    port: {{PORT}}
+    max_concurrent_runs: 0   # each parked card holds a run; a cap refuses the next run with 429 (spike S9)
+mcp_servers:
+  clowder:                   # the town MCP (src/town-mcp.ts): the Mayor's town tools and the owner's connectors, as mcp__clowder__<tool>
+    url: http://127.0.0.1:{{CLOWDER_PORT}}/mcp
+    headers:
+      Authorization: "Bearer ${CLOWDER_HERMES_TOKEN}"   # the gate token, from Hermes's environment
+      X-Town-Action: owner   # Clowder's local write header, which every loopback write needs (access.ts)
+    trust: full              # no native prompt: the gate plugin is the one policy
+    timeout: 120
+platform_toolsets:
+  api_server: [session_search, skills, web]   # an explicit list without MCP servers still gets every enabled one (v0.22.5 tools_config.py:717)
+agent:
+  # memory: MEMORY.md and USER.md go into every later system prompt, so a page could plant a standing instruction (security pass M1). The town wiki is the memory.
+  disabled_toolsets: [terminal, code_execution, file, browser, computer_use, delegation, cronjob, kanban, image_gen, video_gen, tts, connections, vision, todo, memory]
+auxiliary:
+  background_review:
+    enabled: false      # no post-turn review on the Mayor's model (spike S3)
+memory:
+  nudge_interval: 0     # no periodic memory review either
+security:
+  allow_lazy_installs: false
+  allow_private_urls: false   # web_extract, which the gate allows, never reaches this computer's own services (Clowder's API among them)
+plugins:
+  enabled: [clowder_gate]
+  auto_update_check_hours: 0
+  hook_callback_timeout: 30   # above the plugin's own 10 s
+updates:
+  check: false
+model_catalog:
+  enabled: false
+models_dev:
+  url: http://127.0.0.1:9/api.json   # a dead loopback address: no fetch of models.dev
+curator:
+  enabled: false
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+monitoring:
+  export:
+    otlp:
+      enabled: false

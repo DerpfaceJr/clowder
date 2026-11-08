@@ -1,0 +1,80 @@
+/* Settings menu (☰): a short list of categories, then one page per category.
+   A bottom sheet on phones and tablets, a side sheet from 1101px. Colours and type come from the app's tokens (style.css). */
+.town-menu{position:fixed;inset:auto 0 0 0;margin:0;width:100%;max-width:100%;max-height:88dvh;padding:0;border:0;border-radius:var(--r-lg) var(--r-lg) 0 0;background:var(--paper);color:inherit;box-shadow:var(--e3);overflow-y:auto}
+.town-menu .sheet-grip{display:flex;margin:0 -16px;cursor:grab;touch-action:none}
+.town-menu .sheet-grip span{width:44px;height:5px;border-radius:var(--r-pill);background:color-mix(in srgb,var(--ink) 25%,var(--paper))}
+.menu-body{padding:0 16px calc(16px + env(safe-area-inset-bottom))}
+/* Phones: the sheet is full height, grabber kept. */
+@media(max-width:600px){.town-menu{height:100dvh;max-height:none;border-radius:0;padding-top:env(safe-area-inset-top,0px)}}
+@media(min-width:1101px){
+ .town-menu{inset:0 0 0 auto;height:100dvh;max-height:100dvh;width:min(400px,100vw);border-radius:0}
+ .town-menu .menu-body{padding:16px 20px calc(16px + env(safe-area-inset-bottom));min-height:100%}
+ .town-menu .sheet-grip{display:none}
+}
+#town-menu [hidden]{display:none!important}
+
+.menu-tools{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px;padding-top:4px}
+.menu-tools-main{display:flex;align-items:center;gap:4px;min-width:0}
+/* Panel title: small caps, as the other panels. */
+.menu-tools h2{font:600 12px/1.2 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-tools h2:focus{outline:none}
+/* The sheet's exit is the .close-x control (style.css). */
+/* The ← in the markup is drawn as the Lucide arrow-left (style.css), its text hidden. */
+.menu-back{display:inline-grid;place-items:center;width:var(--tap);height:var(--tap);flex-shrink:0;font-size:0;line-height:1;border:0;background:none;padding:0;border-radius:var(--r-pill);color:var(--accent-strong)}
+.menu-back::before{content:"";width:22px;height:22px;background:currentColor;-webkit-mask:var(--icon-arrow-left) center/22px no-repeat;mask:var(--icon-arrow-left) center/22px no-repeat}
+.menu-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* The category list: one card (style.css), a 56px row per category, each with its live value underneath. */
+.settings-list{display:grid;margin-top:6px;overflow:hidden}
+.menu-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 14px;border:0;border-top:1px solid color-mix(in srgb,var(--line) 70%,var(--paper));border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.settings-list>.menu-row:first-child{border-top:0}
+@media(hover:hover){.menu-row:hover{background:var(--paper-2)}}
+.menu-row:focus-visible{outline:2px solid #596e54;outline-offset:-2px}
+.menu-row-icon{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--accent) 12%,var(--paper));color:var(--accent-strong);font-size:16px}
+.menu-row-text{display:grid;gap:2px;min-width:0;flex:1}
+.menu-row-title{font-size:16px;color:var(--ink)}
+.menu-row-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--muted)}
+/* The › the script writes is drawn as the Lucide chevron (style.css), its text hidden. */
+.menu-row-chevron{flex-shrink:0;width:20px;height:20px;font-size:0;background:var(--muted);-webkit-mask:var(--icon-chevron-right) center/20px no-repeat;mask:var(--icon-chevron-right) center/20px no-repeat}
+
+/* The running build, under the list: one quiet line, and a notice when the code on disk is newer than the running server. */
+.settings-build{display:grid;gap:8px;margin:12px 2px 0}
+.settings-build-line{margin:0;font:13px/1.4 var(--font-ui);color:var(--muted);overflow-wrap:anywhere}
+.settings-build-stale{margin:0;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--r-sm);background:var(--paper-2);color:var(--ink);font:14px/1.45 var(--font-ui)}
+.settings-secrets{margin:0;font:12px/1.4 var(--font-ui);color:var(--muted);overflow-wrap:anywhere}
+.settings-secrets.warn{padding-left:8px;border-left:3px solid var(--line);color:var(--ink)}
+
+/* A category page: its title sits in the header, so the page's own h3 is not repeated. */
+.menu-page{margin-top:10px}
+.menu-page>h3{display:none}
+.menu-sub+.menu-sub,.menu-more{margin-top:18px}
+.menu-sub h4,.menu-more h4{margin:0 2px 8px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600}
+.menu-more{padding-top:14px;border-top:1px solid var(--line)}
+.menu-more:not(:has(.menu-items>:not([hidden]))){display:none}
+/* Each item is a card row (style.css .menu-items>button: --e1, --r-md, 56px). */
+.menu-items{display:grid;gap:8px}
+.menu-items button{min-height:var(--tap);display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;column-gap:10px;row-gap:2px;padding:8px 14px;text-align:left;font-size:15px}
+.menu-items button[data-note]::after{content:attr(data-note);flex-basis:100%;font-size:12px;line-height:1.35;color:var(--muted);font-weight:400}
+/* Segmented choices: a sunken track, the chosen one raised on --e1. */
+.menu-items .view-switch{display:flex;padding:3px;border-radius:var(--r-md);background:color-mix(in srgb,var(--ink) 6%,var(--paper));border:0}
+.menu-items .view-switch button{flex:1;min-height:var(--tap);justify-content:center;align-items:center;text-align:center;font-size:14px;padding:6px 4px;border:0;background:transparent;border-radius:var(--r-sm);box-shadow:none}
+.menu-items .view-switch button[aria-pressed=true]{background:var(--paper);color:var(--accent-strong);box-shadow:var(--e1)}
+.menu-page .menu-items button:focus-visible{outline:2px solid #596e54;outline-offset:2px}
+/* Weather: eight choices, four to a row. */
+.menu-items .weather-switch{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}
+.menu-items .weather-switch button{font-size:13px;padding:6px 2px}
+
+/* Radios and checkboxes in the menu: the control sits before its text, and the whole row is the tap target (at least var(--tap) tall). */
+#town-menu label:has(>input[type=radio]),#town-menu label:has(>input[type=checkbox]){display:flex;align-items:center;gap:12px;min-height:var(--tap);margin:0;padding:8px 2px;font-size:15px;line-height:1.35;cursor:pointer}
+/* Mayor's autonomy: the radio sits beside the level name, its explanation under the name. */
+#settings-autonomy label:has(>input[type=radio]){display:grid;grid-template-columns:22px minmax(0,1fr);column-gap:12px;align-items:start;padding:10px 2px}
+#settings-autonomy label>input{grid-row:1/span 2;margin-top:2px}
+#settings-autonomy label>strong{display:block;font-weight:600}
+#settings-autonomy label>span{display:block;font-size:13px;line-height:1.45;color:var(--muted)}
+/* Sound & notifications: sliders are full width with a 44px hit area; headings and hints match the menu's small caps. */
+#settings-sound .sound-settings{display:grid;gap:8px}
+#settings-sound h4{margin:14px 0 2px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600}
+#settings-sound h4:first-child{margin-top:0}
+#settings-sound .sound-slider{display:grid;gap:2px;margin:0;padding:6px 2px;font-size:15px}
+#settings-sound .sound-slider input[type=range]{width:100%;height:var(--tap);margin:0;accent-color:var(--accent);cursor:pointer}
+#settings-sound .sound-status,#settings-sound .notify-hint{margin:0;font-size:13px;line-height:1.45;color:var(--muted)}

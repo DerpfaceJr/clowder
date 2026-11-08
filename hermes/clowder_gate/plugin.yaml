@@ -1,0 +1,6 @@
+name: clowder_gate
+version: 1.0.0
+description: Clowder's gate. Every tool call asks Clowder's policy first; a call Clowder does not allow does not run.
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call

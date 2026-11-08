@@ -1,0 +1,108 @@
+# Signed release (plan 7.9). A v* tag on the public repo builds the NSIS installer, signs it with Azure Artifact Signing and uploads the
+# installer, its .blockmap and latest.yml to a draft GitHub release. The owner publishes the draft once this run is green; only a published
+# release reaches the updater (plan 7.10). A tag on any other repository, the private one included, skips the job.
+#
+# Settings live in the GitHub environment `release` as variables, never in this file:
+#   AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_SUBSCRIPTION_ID   the app registration azure/login signs in as (OIDC, no stored secret)
+#   AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_CERT_PROFILE   the Artifact Signing account and certificate profile
+#   AZURE_PUBLISHER_NAME   the certificate subject, which app-update.yml carries and the updater checks every download against
+# The federated credential's subject is repo:DerpfaceJr/clowder:environment:release. docs/release-signing.md has the owner's steps.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'DerpfaceJr/clowder'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: write   # create the draft release and upload to it
+      id-token: write   # the OIDC token azure/login exchanges
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # One major, not package.json's open ">=" range, so a release does not move to a new Node the week it ships.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Tag matches package.json
+        shell: pwsh
+        run: node scripts/check-release-tag.mjs
+
+      # electron-updater 6.8.11 skips the signature check when app-update.yml has no publisherName, so an empty variable must stop the run.
+      - name: Signing settings are all set
+        shell: pwsh
+        env:
+          TENANT: ${{ vars.AZURE_TENANT_ID }}
+          CLIENT: ${{ vars.AZURE_CLIENT_ID }}
+          SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          CERT_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+          PUBLISHER: ${{ vars.AZURE_PUBLISHER_NAME }}
+        run: |
+          $missing = @('TENANT','CLIENT','SUBSCRIPTION','ENDPOINT','ACCOUNT','CERT_PROFILE','PUBLISHER') | Where-Object { -not "$([Environment]::GetEnvironmentVariable($_))".Trim() }
+          if ($missing) { throw "Empty environment variables in 'release': $($missing -join ', ')" }
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      # Right before the build: the federated sign-in is not refreshed, so it should be fresh when the first file is signed.
+      # Invoke-TrustedSigning (installed by electron-builder) authenticates with DefaultAzureCredential, which picks up this Azure CLI login.
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The Azure ids go in as -c flags only, not as AZURE_* variables, so EnvironmentCredential does not try first with half a configuration.
+      # The timestamp server is Microsoft's Artifact Signing TSA (Learn, how-to-signing-integrations): the certificates live three days.
+      - name: Build, sign and publish
+        shell: pwsh
+        env:
+          CLOWDER_RELEASE: '1'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGN_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGN_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGN_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+          SIGN_PUBLISHER: ${{ vars.AZURE_PUBLISHER_NAME }}
+        run: |
+          node scripts/write-build-info.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/fetch-hermes-runtime.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node node_modules/electron-builder/cli.js --win --publish always `
+            "-c.win.azureSignOptions.endpoint=$env:SIGN_ENDPOINT" `
+            "-c.win.azureSignOptions.codeSigningAccountName=$env:SIGN_ACCOUNT" `
+            "-c.win.azureSignOptions.certificateProfileName=$env:SIGN_PROFILE" `
+            "-c.win.azureSignOptions.publisherName=$env:SIGN_PUBLISHER" `
+            "-c.win.azureSignOptions.timestampRfc3161=http://timestamp.acs.microsoft.com/"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      # The draft is already uploaded; a red step here means the owner deletes it instead of publishing it.
+      - name: Check the release build
+        shell: pwsh
+        run: |
+          node scripts/check-desktop-build.mjs --release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          foreach ($file in @(Get-ChildItem dist-desktop -Filter 'Clowder-Setup-*.exe') + @(Get-Item dist-desktop/win-unpacked/Clowder.exe)) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($sig.Status -ne 'Valid' -or -not $sig.TimeStamperCertificate) { throw "$($file.Name): signature $($sig.Status), timestamp $([bool]$sig.TimeStamperCertificate)" }
+            Write-Output "$($file.Name): $($sig.Status), signed by $($sig.SignerCertificate.Subject), timestamped"
+          }

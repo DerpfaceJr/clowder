@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cream">#FDF8EA</color>
+    <color name="ink">#3D2B1F</color>
+    <color name="green">#526854</color>
+    <color name="field">#FFFDF6</color>
+    <color name="outline">#E5E0D6</color>
+    <color name="ic_launcher_background">#FDF8EA</color>
+</resources>

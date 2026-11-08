@@ -1,0 +1,14 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+town.local.json
+dist-desktop/
+dist-android/
+.claude/worktrees/
+build-info.json
+hermes-runtime/
+.hermes-runtime-*/

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "alpha": {"command": "from-mcp-json", "args": ["serve"]}
+  }
+}

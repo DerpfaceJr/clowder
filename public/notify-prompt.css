@@ -1,0 +1,32 @@
+/* The first-run notifications offer (notify-prompt.js): a toast above the dock, in the part of the town no panel covers, so it never
+   sits on a panel or sheet header. On a phone it waits while a sheet is open (a short phone has no room above a half sheet); on wider
+   screens it moves out of the way of open side panels and the camera cluster. Tokens from style.css; layout variables from immersive.css. */
+.notify-prompt{position:fixed;z-index:24;left:var(--edge,10px);right:var(--edge,10px);bottom:calc(var(--dock-stack,82px) + var(--space-2));max-width:440px;margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:var(--space-3);row-gap:var(--space-1);align-items:start;padding:var(--space-3) var(--space-4);border:0;border-radius:var(--r-md);background:var(--paper);color:var(--ink);box-shadow:var(--e2);box-sizing:border-box}
+.notify-prompt-icon{grid-row:span 2;display:grid;place-items:center;width:36px;height:36px;border-radius:var(--r-pill);background:var(--owner-bubble);color:var(--accent-strong)}
+.notify-prompt-icon svg{display:block;width:20px;height:20px}
+.notify-prompt h2{margin:0;font:600 var(--text-md)/1.3 var(--font-ui)}
+.notify-prompt p{margin:0;font-size:var(--text-sm);line-height:1.45;color:var(--ink-2)}
+.notify-prompt :is(.notify-prompt-msg,.notify-prompt-actions){grid-column:2}
+.notify-prompt .notify-prompt-msg{color:var(--ink)}
+.notify-prompt .notify-prompt-msg:empty{display:none}
+.notify-prompt-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-1)}
+.notify-prompt-actions button{min-height:var(--tap);padding:0 var(--space-4);border-radius:var(--r-sm);transition:scale var(--dur-quick) var(--ease-out)}
+.notify-prompt-actions button:active{scale:var(--press,1)}
+.notify-prompt [hidden]{display:none}
+@media(prefers-reduced-motion:no-preference){.notify-prompt{animation:notify-toast-in var(--dur-sheet) var(--ease-out)}}
+@keyframes notify-toast-in{from{opacity:0;transform:translateY(var(--space-3))}}
+.studio-open .notify-prompt{display:none}
+/* Out of the way: the camera cluster is a 44px button in a 4px capsule; side panels use the offsets of immersive.css. */
+@media(max-width:599px){
+ .notify-prompt{right:calc(var(--edge) + var(--tap) + 2 * var(--space-1) + var(--space-2))}
+ body:is([data-sheet=half],[data-sheet=full]) .notify-prompt{display:none}
+}
+@media(min-width:600px) and (max-width:1100px){
+ main:has(> :is(#residents-panel,#inspector-panel,#season-panel,#projects-panel,#quests-panel):not([hidden])) ~ .notify-prompt,main:has(#diary-panel:not([hidden])) ~ .notify-prompt{right:calc(var(--edge) + min(400px,46vw) + 12px + var(--tap) + 2 * var(--space-1) + var(--space-2))}
+}
+@media(min-width:1101px){
+ main:has(> #residents-panel:not([hidden])) ~ .notify-prompt{left:calc(16px + 280px + var(--space-4))}
+ main:has(#diary-panel:not([hidden])) ~ .notify-prompt{left:calc(16px + 448px + var(--space-4))}
+ main:has(> :is(#season-panel,#projects-panel,#quests-panel):not([hidden])) ~ .notify-prompt{right:calc(412px + var(--tap) + 2 * var(--space-1) + var(--space-2))}
+ main:has(> #inspector-panel:not([hidden])) ~ .notify-prompt{right:calc(472px + var(--tap) + 2 * var(--space-1) + var(--space-2))}
+}

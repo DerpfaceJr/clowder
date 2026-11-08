@@ -1,0 +1,61 @@
+{
+  "about": "Delegation cases for scripts/prompt-eval.mjs. A synthetic town shaped like a real one (a Mayor, five directors with reports, roads from each director to its reports). Case texts are paraphrases of real delegation pairs, not copied messages; expect is the cat the real town handed that kind of work to.",
+  "founders": [
+    {"id": "mayor", "name": "Mayor", "role": "Coordinate the town. Delegate by expertise, summarize results, and bring owner-only decisions to the owner."},
+    {"id": "scholar", "name": "Scholar", "role": "Research opportunities: markets, niches and competitors, with sources and stated confidence."},
+    {"id": "archivist", "name": "Archivist", "role": "Summarize evidence and lessons with provenance, and record what finished work established for the town's memory."}
+  ],
+  "projects": [
+    {"director": "director_shop", "name": "Director Shop", "project": "Sticker Shop: handmade sticker store", "reports": [["shop_scout", "Shop Scout", "Researcher for the sticker shop: competitor prices, popular niches and seasonal demand"], ["shop_writer", "Shop Writer", "Merchant drafter for the sticker shop: product listings, descriptions and bundle offers"], ["shop_critic", "Shop Critic", "Critic for the sticker shop: checks listings for claims, typos and policy problems before anything goes live"]]},
+    {"director": "director_game", "name": "Director Game", "project": "Puzzle Game: browser puzzle game with a paid hint pack", "reports": [["game_builder", "Game Builder", "Builder for the puzzle game: writes the code, fixes bugs and deploys previews"], ["game_critic", "Game Critic", "Critic for the puzzle game: reviews balance, difficulty and release readiness"]]},
+    {"director": "director_video", "name": "Director Video", "project": "App Videos: short videos advertising the app", "reports": [["video_writer", "Video Writer", "Script writer for the app videos: hooks, scripts and captions"], ["video_builder", "Video Builder", "Builder for the app videos: renders videos from approved scripts"], ["video_critic", "Video Critic", "Critic for the app videos: checks scripts and renders for wrong claims and caption mistakes"]]},
+    {"director": "director_course", "name": "Director Course", "project": "Cooking Course: paid online cooking course", "reports": [["course_writer", "Course Writer", "Writer for the cooking course: lesson plans, outlines, FAQ and sign-up page drafts"], ["course_critic", "Course Critic", "Critic for the cooking course: reviews lessons for safety, clarity and honest claims"]]},
+    {"director": "director_news", "name": "Director News", "project": "Newsletter: weekly newsletter about the app", "reports": [["news_writer", "News Writer", "Writer for the newsletter: weekly issues, subject lines and referral offers"], ["news_critic", "News Critic", "Critic for the newsletter: proofreads issues and flags weak claims"]]}
+  ],
+  "history": [
+    ["shop_scout", "Compared prices of five sticker sellers"], ["shop_writer", "Drafted the first ten listings"], ["shop_critic", "Reviewed the first ten listings"],
+    ["game_builder", "Built the first five levels"], ["game_critic", "Reviewed level difficulty"], ["video_writer", "Wrote the script for video one"],
+    ["video_builder", "Rendered video one"], ["video_critic", "Reviewed video one"], ["course_writer", "Drafted the course outline"],
+    ["course_critic", "Reviewed the course outline"], ["news_writer", "Drafted issue one"], ["news_critic", "Proofread issue one"],
+    ["scholar", "Researched three money ideas"], ["archivist", "Recorded the lessons of the first month"], ["director_shop", "Planned the sticker shop launch"],
+    ["director_game", "Planned the puzzle game"], ["director_video", "Planned the app videos"], ["director_course", "Planned the cooking course"],
+    ["director_news", "Planned the newsletter"], ["shop_writer", "Drafted holiday bundle offers"], ["game_builder", "Fixed the save bug"],
+    ["video_writer", "Wrote captions for video one"], ["course_writer", "Drafted the week-one lesson"], ["news_writer", "Drafted issue two"],
+    ["shop_critic", "Reviewed bundle offers"], ["game_critic", "Reviewed the save fix"], ["video_critic", "Reviewed captions"],
+    ["course_critic", "Reviewed the week-one lesson"], ["news_critic", "Proofread issue two"], ["scholar", "Researched newsletter growth tactics"]
+  ],
+  "cases": [
+    {"id": "m01", "asker": "mayor", "text": "The sticker shop needs three new product listings for the holiday range.", "expect": {"tool": "delegate", "cat": "director_shop"}},
+    {"id": "m02", "asker": "mayor", "text": "Add a hint button and a daily puzzle to the browser game.", "expect": {"tool": "delegate", "cat": "director_game"}},
+    {"id": "m03", "asker": "mayor", "text": "Make one more short video showing how a goal turns into tasks.", "expect": {"tool": "delegate", "cat": "director_video"}},
+    {"id": "m04", "asker": "mayor", "text": "Write the lesson plan for week two of the cooking course.", "expect": {"tool": "delegate", "cat": "director_course"}},
+    {"id": "m05", "asker": "mayor", "text": "Put together this week's newsletter about the new features.", "expect": {"tool": "delegate", "cat": "director_news"}},
+    {"id": "m06", "asker": "mayor", "text": "How are sticker sales going? Have the shop team check our price list against competitors.", "expect": {"tool": "delegate", "cat": "director_shop"}},
+    {"id": "m07", "asker": "mayor", "text": "Level three of the game is too hard and players quit. Fix the balance.", "expect": {"tool": "delegate", "cat": "director_game"}},
+    {"id": "m08", "asker": "mayor", "text": "Turn the cooking course outline into a sign-up page draft.", "expect": {"tool": "delegate", "cat": "director_course"}},
+    {"id": "m09", "asker": "mayor", "text": "Have the video team script a 20-second clip about the town's diary.", "expect": {"tool": "delegate", "cat": "director_video"}},
+    {"id": "m10", "asker": "mayor", "text": "The newsletter needs three subject line options to test.", "expect": {"tool": "delegate", "cat": "director_news"}},
+    {"id": "m11", "asker": "mayor", "text": "Summarize what the town learned from last month's work, with sources, for the records.", "expect": {"tool": "delegate", "cat": "archivist"}},
+    {"id": "m12", "asker": "mayor", "text": "Research three markets we have not tried yet for a new money project.", "expect": {"tool": "delegate", "cat": "scholar"}},
+    {"id": "g01", "asker": "mayor", "text": "Goal round 4: Make money with the sticker shop. Next step: price the new holiday bundles.", "expect": {"tool": "delegate", "cat": "director_shop"}},
+    {"id": "g02", "asker": "mayor", "text": "Goal round 7: Advertise the app with short videos. Next step: render the second video.", "expect": {"tool": "delegate", "cat": "director_video"}},
+    {"id": "g03", "asker": "mayor", "text": "Goal round 2: Grow the newsletter to 500 readers. Next step: draft a referral offer.", "expect": {"tool": "delegate", "cat": "director_news"}},
+    {"id": "g04", "asker": "mayor", "text": "Goal round 12: Make the puzzle game earn money. Next step: design a small paid hint pack.", "expect": {"tool": "delegate", "cat": "director_game"}},
+    {"id": "g05", "asker": "mayor", "text": "Goal round 5: Sell the cooking course. Next step: write the course FAQ.", "expect": {"tool": "delegate", "cat": "director_course"}},
+    {"id": "g06", "asker": "mayor", "text": "Goal round 9: Advertise the app with short videos. Director Video is busy, so ask Video Critic directly to review the draft script.", "expect": {"tool": "delegate", "cat": "video_critic"}},
+    {"id": "g07", "asker": "mayor", "text": "Goal round 15: Make the puzzle game earn money. Director Game is busy, so ask Game Builder directly to fix the broken save button.", "expect": {"tool": "delegate", "cat": "game_builder"}},
+    {"id": "d01", "asker": "director_shop", "text": "Project: Sticker Shop. Next: research competitor prices for holiday sticker packs.", "expect": {"tool": "delegate", "cat": "shop_scout"}},
+    {"id": "d02", "asker": "director_shop", "text": "Project: Sticker Shop. Next: write product descriptions for five new stickers.", "expect": {"tool": "delegate", "cat": "shop_writer"}},
+    {"id": "d03", "asker": "director_shop", "text": "Project: Sticker Shop. Next: review the five drafted listings for claims and typos.", "expect": {"tool": "delegate", "cat": "shop_critic"}},
+    {"id": "d04", "asker": "director_game", "text": "Project: Puzzle Game. Next: build the hint button and deploy a preview.", "expect": {"tool": "delegate", "cat": "game_builder"}},
+    {"id": "d05", "asker": "director_game", "text": "Project: Puzzle Game. Next: review the level-three balance change before release.", "expect": {"tool": "delegate", "cat": "game_critic"}},
+    {"id": "d06", "asker": "director_video", "text": "Project: App Videos. Next: render video two from the approved script.", "expect": {"tool": "delegate", "cat": "video_builder"}},
+    {"id": "d07", "asker": "director_video", "text": "Project: App Videos. Next: check the rendered video for wrong claims and caption mistakes.", "expect": {"tool": "delegate", "cat": "video_critic"}},
+    {"id": "d08", "asker": "director_video", "text": "Project: App Videos. Next: write the script for a 20-second diary clip.", "expect": {"tool": "delegate", "cat": "video_writer"}},
+    {"id": "d09", "asker": "director_course", "text": "Project: Cooking Course. Next: draft the week-two lesson plan.", "expect": {"tool": "delegate", "cat": "course_writer"}},
+    {"id": "d10", "asker": "director_course", "text": "Project: Cooking Course. Next: review the week-two lesson plan for safety and clarity.", "expect": {"tool": "delegate", "cat": "course_critic"}},
+    {"id": "d11", "asker": "director_news", "text": "Project: Newsletter. Next: draft this week's issue.", "expect": {"tool": "delegate", "cat": "news_writer"}},
+    {"id": "d12", "asker": "director_news", "text": "Project: Newsletter. Next: proofread the drafted issue and flag weak claims.", "expect": {"tool": "delegate", "cat": "news_critic"}},
+    {"id": "d13", "asker": "director_shop", "text": "Project: Sticker Shop. Next: the reviewed listings were fixed; get them checked one more time before they go live.", "expect": {"tool": "delegate", "cat": "shop_critic"}}
+  ]
+}

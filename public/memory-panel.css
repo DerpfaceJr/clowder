@@ -1,0 +1,56 @@
+/* Memory (memory-panel.js): the wiki pages, one at a time, and the graph as the second view. The dialog shell is owner-panels.css;
+   colours and type are the theme tokens in style.css, and chips, sections, badges and cards are the connectors panel's cx- classes. */
+.op-dialog .op-seg button{border-radius:var(--r-sm)}
+.mp-views{max-width:320px}
+.mp-main{display:grid;gap:12px;min-width:0}
+.mp-search{display:flex;gap:8px;min-width:0}
+.op-dialog .mp-search .mp-query{flex:1 1 auto;width:auto}
+.mp-search button{flex-shrink:0}
+.mp-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-width:0}
+.op-dialog .mp-count{font-size:13px;color:var(--muted)}
+.op-dialog .mp-back{padding:0 12px 0 6px;font-weight:600}
+.mp-kinds{gap:6px}
+.op-dialog .mp-kinds .cx-chip{padding:0 14px;border-radius:var(--r-pill);font-size:var(--text-sm)}
+
+/* A page row, a 56px card (style.css): the title with its badges, then lines, when and who. */
+.mp-rows{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.op-dialog .mp-row{display:grid;gap:3px;width:100%;padding:10px 14px;text-align:left;color:inherit}
+@media(hover:hover){.op-dialog .mp-row:hover{background:var(--paper-2)}}
+.mp-row-title{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;min-width:0}
+.mp-row-title strong{font:600 16px/1.3 var(--font-display);overflow-wrap:anywhere}
+.mp-row-meta{font-size:13px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.mp-pairs{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.op-dialog .mp-pair .op-actions button{white-space:normal;text-align:left;line-height:1.3;padding:8px 14px}
+
+/* One page. Your lines carry a "You" tag and the accent edge; links to other pages are quiet buttons inside the text. */
+.mp-page{display:grid;gap:8px;min-width:0}
+.mp-page-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.mp-page-head h3{margin:0;font:24px/1.2 var(--font-display);overflow-wrap:anywhere}
+.mp-page-head h3:focus{outline:none}
+.mp-lines{display:grid;gap:6px;margin:4px 0 0;padding:0;list-style:none}
+.mp-line{display:flex;align-items:baseline;gap:8px;min-width:0;padding:8px 12px;border:0;border-left:4px solid var(--line);border-radius:var(--r-sm);background:var(--paper-2);font-size:14px;line-height:1.5}
+.mp-line-owner{border-left-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--paper))}
+.mp-text{min-width:0;overflow-wrap:anywhere}
+.mp-you{flex-shrink:0}
+.op-dialog .mp-legend{display:flex;align-items:center;gap:6px}
+.op-dialog .mp-link{min-height:var(--tap);padding:0 6px;border:0;background:none;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:3px;vertical-align:baseline}
+.mp-dead{color:var(--muted)}
+.mp-dupe-list,.mp-source-list{display:grid;gap:6px;margin:4px 0 0;padding:0;list-style:none;font-size:13px}
+.mp-source-list li{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-width:0}
+.mp-source{font:13px ui-monospace,Consolas,monospace;color:var(--ink);overflow-wrap:anywhere}
+.mp-merge{display:grid;gap:8px;margin-top:6px}
+.mp-edit-title{margin:0;font:20px/1.2 var(--font-display);overflow-wrap:anywhere}
+.mp-pair-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px}
+.op-dialog .mp-body{min-height:260px;font-size:15px}
+
+/* The graph view hosts memory-view.js; its own back button belongs to the Scholar's tab. */
+.mp-graph{display:grid;gap:10px;min-width:0}
+.mp-graph .memory-back{display:none!important}
+.mp-graph .memory-hits{max-height:200px}
+
+@media(max-width:600px){
+  .mp-views{max-width:none}
+  .mp-pair-fields{grid-template-columns:minmax(0,1fr)}
+  .mp-search button{min-width:88px}
+  .op-dialog .mp-body{min-height:45dvh}
+}

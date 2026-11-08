@@ -1,0 +1,55 @@
+/* Town memory view (Scholar's Town memory tab). Paper panels, the app's type, green and muted text. */
+#memory{display:grid;gap:10px;padding:12px 14px 14px;min-width:0;min-height:0;overflow-y:auto;align-content:start}
+#memory[hidden]{display:none}
+.memory-head h3{margin:0 0 2px;font:600 12px/1.25 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.memory-head .memory-note{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+.memory-head .memory-note[role=status]:empty{display:none}
+.memory-search{display:flex;gap:6px;min-width:0}
+.memory-search input{flex:1;min-width:0}
+/* Each hit is a 56px card row (style.css); three show before the list scrolls. */
+.memory-hits{list-style:none;margin:0;padding:4px 2px;display:grid;gap:6px;max-height:196px;overflow-y:auto}
+.memory-hits li button{width:100%;text-align:left;display:grid;gap:2px;padding:7px 10px}
+.memory-hits li button strong{font:600 13px/1.3 var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
+.memory-hits li button small{color:var(--muted);font-size:11px;line-height:1.35;overflow-wrap:anywhere}
+.memory-hits .muted{padding:8px 4px;font-size:12px}
+/* min-height keeps the stage from shrinking inside the grid, since overflow:hidden would otherwise let it collapse. */
+.memory-stage{position:relative;min-width:0;min-height:280px;border:0;border-radius:var(--r-md);box-shadow:var(--e1);background:radial-gradient(circle at 50% 40%,var(--paper) 0%,color-mix(in srgb,var(--ink) 6%,var(--paper)) 100%);overflow:hidden}
+.memory-canvas{display:block;width:100%;height:320px;touch-action:none;cursor:grab}
+.memory-empty{position:absolute;inset:0;margin:0;display:grid;place-items:center;padding:24px;text-align:center;font:italic 15px/1.4 var(--font-ui);color:var(--muted);pointer-events:none}
+.memory-empty[hidden]{display:none}
+.memory-tools{position:absolute;left:8px;top:8px;display:flex;gap:6px}
+.memory-tools button{font-size:12px;background:color-mix(in srgb,var(--paper) 93%,transparent)}
+.memory-card{position:absolute;right:8px;bottom:8px;max-width:60%;display:grid;gap:2px;padding:8px 10px;border:0;border-radius:var(--r-sm);box-shadow:var(--e2);background:color-mix(in srgb,var(--paper) 95%,transparent);font-size:12px}
+.memory-card[hidden]{display:none}
+.memory-card strong{font:600 14px/1.3 var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
+.memory-card span{color:var(--muted)}
+.memory-legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--muted)}
+.memory-key{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.memory-dot{display:inline-block;width:9px;height:9px;border-radius:var(--r-pill)}
+.memory-line{display:inline-block;width:18px;border-top:2px solid rgba(75,71,61,.5)}
+.memory-line.dashed{border-top-style:dashed;border-color:rgba(124,106,154,.8)}
+@media (max-width:420px){
+  #memory{padding:10px 16px 16px}
+  .memory-canvas{height:280px}
+  .memory-card{max-width:calc(100% - 16px)}
+}
+
+/* Expanded (Scholar's Town memory tab): the chat panel widens into a large sheet and the graph fills the stage. */
+.memory-back{display:none;align-items:center;justify-content:center;margin:0 0 2px;font-size:13px;align-self:flex-start}
+#inspector-panel.memory-expanded{width:min(1100px,85vw);top:var(--sheet-top);bottom:var(--dock-stack)}
+#inspector-panel.memory-expanded #memory{grid-template-rows:auto auto auto minmax(0,1fr) auto;align-content:stretch}
+#inspector-panel.memory-expanded .memory-stage{min-height:200px}
+/* The cat header, home line and settings strip give their height to the graph while the memory view is open. */
+#inspector-panel.memory-expanded :is(.home-summary,.chat-settings){display:none}
+#inspector-panel.memory-expanded .memory-canvas{position:absolute;inset:0;width:100%;height:100%}
+/* The composer is hidden while the graph has the panel, so the stage takes the height it would give to the message box. */
+#inspector-panel.memory-expanded #chat-form{display:none}
+@media(min-width:600px){#inspector-panel{transition:width var(--dur-sheet) var(--ease-in-out),top var(--dur-sheet) var(--ease-in-out),bottom var(--dur-sheet) var(--ease-in-out)}}
+@media(max-width:599px){
+  #inspector-panel.memory-expanded{left:0;right:0;top:env(safe-area-inset-top,0px);bottom:env(safe-area-inset-bottom,0px);width:auto;height:auto;border-width:0;border-radius:0}
+  #inspector-panel.memory-expanded #memory{padding-bottom:calc(var(--dock-h) + 16px + env(safe-area-inset-bottom,0px))}
+  #inspector-panel.memory-expanded .memory-back{display:inline-flex}
+  /* The header sits above the panel in the stacking order, so it is hidden while the phone sheet is full screen. */
+  body.immersive:has(#inspector-panel.memory-expanded) header{visibility:hidden}
+}
+@media(prefers-reduced-motion:reduce){#inspector-panel{transition:none!important}}

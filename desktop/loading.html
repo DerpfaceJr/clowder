@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src file:">
+<title>Clowder</title>
+<style>
+/* Standalone splash (the server is not up yet). These are copies of the :root tokens in public/style.css; keep them in step. */
+:root{
+  --paper:#fffdf8;      /* --paper */
+  --ink:#4b473d;        /* --ink */
+  --ink-2:#6b6657;      /* --ink-2 */
+  --danger:#9a3b2b;     /* --danger */
+  --line:#e5e0d6;       /* --line */
+  --accent:#526854;     /* --accent */
+  --text-sm:13px;       /* --text-sm */
+  --text-md:15px;       /* --text-md */
+  --text-display:28px;  /* --text-display */
+  --r-md:14px;          /* --r-md */
+  --e1:0 1px 2px #2633251f,0 1px 1px #26332514; /* --e1 */
+  --dur-base:200ms;     /* --dur-base */
+  --ease-in-out:cubic-bezier(.4,0,.2,1); /* --ease-in-out */
+  color-scheme:light;
+}
+/* Fonts: public/fonts is not in this build yet, so the fallback stacks are used. */
+/* The title bar is hidden (desktop/main.cjs), so the page itself moves the window; the server log stays scrollable. */
+html{-webkit-app-region:drag;app-region:drag}
+pre{-webkit-app-region:no-drag;app-region:no-drag}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--paper);color:var(--ink);font:var(--text-md)/1.5 "Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+main{padding:24px;max-width:560px;width:100%;box-sizing:border-box;text-align:center;display:flex;flex-direction:column;align-items:center}
+.mark{width:72px;height:72px;border-radius:var(--r-md);box-shadow:var(--e1)}
+h1{font:600 var(--text-display)/1.2 Georgia,serif;letter-spacing:-.4px;margin:18px 0 6px}
+#msg{color:var(--ink-2);margin:0 0 20px;font-size:var(--text-md)}
+.hint{display:flex;gap:8px;height:10px;align-items:center}
+.hint span{width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.25;animation:breathe 2.4s var(--ease-in-out) infinite}
+.hint span:nth-child(2){animation-delay:.3s}
+.hint span:nth-child(3){animation-delay:.6s}
+@keyframes breathe{0%,100%{opacity:.25}50%{opacity:.85}}
+pre{display:none;width:100%;white-space:pre-wrap;word-break:break-word;text-align:left;background:var(--paper);border:1px solid var(--line);padding:12px;border-radius:var(--r-md);max-height:55vh;overflow:auto;font:12px/1.4 Consolas,monospace;color:var(--ink)}
+body[data-state=error] pre{display:block;margin-top:16px}
+body[data-state=error] h1{color:var(--danger)}
+body[data-state=error] #msg{color:var(--ink)}
+body[data-state=error] .hint{display:none}
+.rescue{display:none;margin:12px 0 0;color:var(--ink-2);font-size:var(--text-sm)}
+body[data-state=error] .rescue{display:block}
+@media (prefers-reduced-motion:reduce){
+  .hint span{animation:none;opacity:.5}
+}
+</style>
+</head>
+<body data-state="starting">
+<main>
+<img class="mark" src="../public/icons/icon-192.png" alt="" width="72" height="72">
+<h1 id="title">Clowder</h1>
+<p id="msg">Starting the town server on this computer.</p>
+<div class="hint" aria-hidden="true"><span></span><span></span><span></span></div>
+<p class="rescue">To bring back a backup, press Alt and choose Clowder, then Restore a backup.</p>
+<pre id="log"></pre>
+</main>
+<script>
+window.showError = function (message, log) {
+  document.body.dataset.state = 'error';
+  document.getElementById('title').textContent = 'Clowder could not start';
+  document.getElementById('msg').textContent = message;
+  document.getElementById('log').textContent = log || '(no server output)';
+};
+</script>
+</body>
+</html>

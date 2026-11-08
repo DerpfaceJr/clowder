@@ -1,0 +1,132 @@
+/* Connectors and plugins (connectors-panel.js) and the chat slash list (slash-commands.js). A centred paper dialog on desktop, a
+   full-screen sheet on phones. The palette is fixed light, so the dialog reads the same in dark mode. Buttons, chips, inputs, tabs,
+   toggles and cards follow the grammar in style.css; this file keeps layout and the panel's own pieces. */
+#connectors-open[hidden],#connectors-panel [hidden],.slash-list[hidden]{display:none!important}
+#connectors-panel{width:min(760px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:88dvh;margin:auto;padding:18px 20px 16px;color:var(--ink);color-scheme:light;overflow:hidden;box-sizing:border-box}
+#connectors-panel[open]{display:flex;flex-direction:column}
+/* Phones: a full-screen sheet, like every dialog. */
+@media(max-width:599px){#connectors-panel{position:fixed;inset:0;margin:0;width:100%;max-width:none;height:100dvh;max-height:none;padding:max(12px,env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom));border-radius:0;box-shadow:none}}
+:where(#connectors-panel) :is(button,input,textarea,select){color:var(--ink)}
+:where(#connectors-panel) :is(input,textarea,select){font:inherit}
+/* Buttons are the app's (style.css); here only their type. */
+:where(#connectors-panel) button{font:600 var(--text-sm)/1.2 var(--font-ui)}
+.slash-list:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.connectors-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.connectors-head h2{margin:2px 0 0;font:26px/1.15 var(--font-display);overflow-wrap:anywhere}
+.connectors-lede{margin:4px 0 10px;font-size:13px;line-height:1.45;color:var(--ink-2)}
+.connectors-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+/* Tabs (style.css grammar): --text-sm on a 44px target, the chosen one underlined 2px in sage. */
+.cx-tabs{display:flex;gap:var(--space-4);border-bottom:1px solid var(--line)}
+.cx-tab{flex:0 1 auto;min-height:var(--tap);padding:0 var(--space-1);border:0;border-bottom:2px solid transparent;border-radius:0;background:none;font-size:var(--text-sm);color:var(--ink-2)}
+.cx-tab[aria-selected=true]{color:var(--accent-strong);border-bottom-color:var(--accent);font-weight:700}
+.cx-panel{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:10px 2px 4px}
+.cx-view,.cx-list{display:grid;gap:10px;margin:0;padding:0;list-style:none;min-width:0}
+.cx-view{gap:12px}
+.cx-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.cx-bar h3{flex:1 1 auto;margin:0;font:20px var(--font-display)}
+.cx-lede{margin:0;font-size:13px;line-height:1.45;flex:1 1 220px}
+.cx-back{padding:0 10px 0 4px;font-size:14px}
+.cx-section{display:grid;gap:8px;min-width:0;padding-top:12px;border-top:1px solid var(--line)}
+.cx-section>h4,.cx-cats>h4,.cx-sub>h4{margin:0;font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-2)}
+.cx-card{display:grid;gap:8px;min-width:0;padding:12px 14px}
+.cx-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.cx-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.cx-title strong{font:600 16px/1.3 var(--font-display);overflow-wrap:anywhere}
+.cx-status{display:flex;align-items:center;gap:8px;margin:0;font-size:13px}
+.cx-dot{flex-shrink:0;width:9px;height:9px;border-radius:var(--r-pill);background:var(--ink-3)}
+.cx-dot[data-tone=ok]{background:var(--accent)}
+.cx-dot[data-tone=warn]{background:var(--working)}
+.cx-dot[data-tone=error]{background:var(--danger)}
+.cx-where,.cx-desc,.cx-auth,.cx-counts,.cx-note,.cx-empty{margin:0;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.cx-note{color:var(--needs-ink)}
+.cx-empty{padding:6px 0;font-size:13px}
+.cx-err-line,.cx-msg.bad{color:var(--danger)}
+.cx-wait{margin:0;font-size:12px;color:var(--accent)}
+.cx-msg{margin:0;font-size:12px;line-height:1.45;color:var(--accent-strong);white-space:pre-line;overflow-wrap:anywhere}
+.cx-msg:empty,.cx-msg[hidden]{display:none}
+/* The switch row; its pill and colours are the toggle grammar in style.css. */
+.cx-switch{position:relative;display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer}
+.cx-switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.cx-switch input:disabled{cursor:default}
+/* .cx-primary, .cx-secondary, .cx-danger, .cx-remove and .cx-disclose take their colours from the button variants in style.css. */
+.cx-remove,.cx-disclose{justify-self:start}
+.cx-details-wrap{display:grid;gap:10px;min-width:0;padding-top:10px;border-top:1px solid var(--line)}
+.cx-cats{display:grid;gap:6px;justify-items:start}
+.cx-every{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:var(--ink-2)}
+.cx-cats>.cx-chips{justify-self:stretch}
+.cx-chips{display:flex;flex-wrap:wrap;gap:8px}
+/* Choice chips: 44px buttons with pill ends; the chosen one sage. */
+.cx-chip{border-radius:var(--r-pill);font-weight:500}
+.cx-chip[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 14%,var(--paper));border-color:var(--accent);font-weight:600}
+.cx-tools{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.cx-tool{display:grid;gap:8px;min-width:0;padding:10px;border:0;border-radius:var(--r-sm);background:var(--paper-2)}
+.cx-tool-name{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.cx-tool-name strong{font-size:14px;overflow-wrap:anywhere}
+.cx-code{font:11px Consolas,ui-monospace,monospace;color:var(--ink-2);overflow-wrap:anywhere}
+.cx-tool-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:2px 0 0;font-size:12px;line-height:1.45}
+/* Segmented choices: a sunken track, the chosen one raised on --e1 (as in the settings menu). */
+.cx-seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;padding:3px;border:0;border-radius:var(--r-md);background:color-mix(in srgb,var(--ink) 6%,var(--paper))}
+.cx-seg button{padding:0 4px;border:0;border-radius:var(--r-sm);background:transparent;font-size:12px;font-weight:500}
+.cx-seg button[aria-pressed=true]{background:var(--paper);color:var(--accent-strong);font-weight:700;box-shadow:var(--e1)}
+.cx-setup{display:grid;gap:10px;padding:10px;border-radius:var(--r-md);background:var(--paper-2)}
+.cx-setup p{margin:0}
+/* .cx-row and .cx-browser are 56px card rows (style.css). */
+.cx-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;align-items:center;min-width:0;padding:10px 12px}
+.cx-row-main{display:grid;gap:3px;min-width:0}
+.cx-row-main strong{font-size:14px;overflow-wrap:anywhere}
+.cx-row>.cx-msg{grid-column:1/-1}
+.cx-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px;border-radius:var(--r-md);background:color-mix(in srgb,var(--danger) 8%,var(--paper))}
+.cx-confirm p{flex-basis:100%;margin:0;font-size:13px;overflow-wrap:anywhere}
+.cx-details{display:grid;gap:10px;padding:10px 12px;border-radius:var(--r-md);background:var(--paper-2);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.cx-details ul{margin:0;padding-left:18px}
+.cx-sub{display:grid;gap:4px}
+.cx-plain li{margin:0 0 4px}
+.cx-form{display:grid;gap:10px;min-width:0}
+.cx-field{display:grid;gap:4px;min-width:0;font-size:12px}
+.cx-field>span{font-weight:600;color:var(--ink-2)}
+.cx-form input[type=text],.cx-form input[type=url],.cx-form input:not([type]),.cx-form textarea,.cx-field input,.cx-field select,.cx-section input:not([type=radio]),.cx-section select{width:100%;min-width:0;font-size:14px}
+.cx-form textarea,.cx-section textarea{min-height:0;resize:vertical}
+.cx-masked[data-masked=true]{-webkit-text-security:disc}
+.cx-secret{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.cx-show{min-width:64px}
+.cx-kind{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;border:0;min-width:0}
+.cx-kind legend{margin:0 0 4px;padding:0;font-size:12px;font-weight:600;color:var(--ink-2)}
+.cx-choice{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap);padding:0 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper);font-size:13px;cursor:pointer}
+.cx-choice input{width:20px;height:20px;margin:0;accent-color:var(--accent)}
+.cx-warn{margin:0;padding:10px 12px;border-radius:var(--r-md);background:var(--needs);color:var(--needs-ink);font-size:12px;line-height:1.45}
+.cx-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.cx-market-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.cx-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media(max-width:599px){.cx-market-bar,.cx-filters,.cx-secret{grid-template-columns:minmax(0,1fr)}}
+.cx-market-bar .cx-field{min-width:0}
+
+/* The chat slash list: a popover above the text box. It covers the conversation and does not push the composer down. */
+#chat-form{position:relative}
+#chat-form .slash-list{overflow-x:hidden;position:absolute;left:0;right:0;bottom:100%;z-index:3;display:grid;gap:2px;max-height:min(260px,40dvh);margin:0 0 6px;padding:4px;overflow-y:auto;list-style:none;border:1px solid #e5e0d6;border-radius:14px;background:#fffdf8;box-shadow:0 -6px 24px #1f2a2026;font-size:13px;color:#3d3a2e}
+.slash-item{min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;min-height:44px;padding:6px 10px;border-radius:10px;cursor:pointer}
+.slash-item[aria-selected=true]{background:#e3efd9}
+.slash-name{font:600 13px Consolas,ui-monospace,monospace;color:#40523e}
+.slash-hint{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px Consolas,ui-monospace,monospace;color:#6b6657}
+.slash-desc{flex-basis:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#6b6657}
+
+/* Approval detail: the connector call's arguments, monospace, collapsed on phones. */
+.approval-detail{margin:0}
+.approval-detail summary{display:inline-flex;align-items:center;min-height:44px;cursor:pointer;font-size:13px;font-weight:600;color:#526854}
+.approval-detail pre{max-height:30dvh;margin:0;padding:10px 12px;overflow:auto;border-radius:12px;background:#f6f3eb;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.approval-detail[hidden]{display:none}
+@media(min-width:600px){.approval-detail summary{display:none}}
+.cx-open{display:inline-flex;align-items:center;min-height:var(--tap);margin:6px 0;padding:0 var(--space-4);border-radius:var(--r-sm);font:600 var(--text-sm) var(--font-ui);text-decoration:none}.cx-wait .cx-open{margin-left:4px}
+/* The cats' browser row: one line on wide screens, the text above the Open button on a phone. Tap target 44px. */
+.cx-browser{display:flex;align-items:center;flex-wrap:wrap;gap:10px 12px;min-width:0;padding:12px 14px}
+.cx-browser-text{flex:1 1 220px;min-width:0}
+.cx-browser-text strong{display:block;font:600 16px/1.3 var(--font-display)}
+.cx-browser-text .cx-lede{margin-top:2px}
+.cx-browser>button{min-width:var(--tap);font:600 14px/1 var(--font-ui)}
+.cx-browser>.cx-msg{flex:1 1 100%;margin:0}
+.cx-browser-mode{flex:1 1 100%;grid-template-columns:repeat(2,minmax(0,1fr))}
+.cx-browser-chrome{flex:1 1 100%;display:grid;gap:8px;min-width:0}
+.cx-browser-chrome p{margin:0;font-size:13px;line-height:1.45}
+.cx-browser-chrome .cx-link{justify-self:start;min-height:var(--tap);display:inline-flex;align-items:center;color:var(--accent-strong);font-weight:600}
+.cx-token{display:flex;gap:8px;min-width:0}
+.cx-token input{flex:1 1 auto;min-width:0;font:14px var(--font-ui)}
+.cx-token button{font:600 14px/1 var(--font-ui)}

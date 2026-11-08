@@ -1,0 +1,48 @@
+/* Usage (usage-panel.js). One series, one hue: the theme accent for every bar, recessive axes, the value read out in ink beside the
+   chart rather than on each bar. The dialog shell is owner-panels.css; sections, dots and messages are the connectors panel's cx- classes. */
+.op-dialog .op-seg button{border-radius:9px}
+.op-dialog .us-months button{white-space:normal;line-height:1.25;padding:6px 8px}
+.us-facts dd{font-size:18px}
+.op-dialog .us-fact-note{display:block;font-size:12px;color:var(--muted)}
+
+/* The cap: a sentence, a track that fills, the owner's form. */
+.us-cap-track{position:relative;height:10px;border-radius:999px;background:var(--paper-2);border:1px solid var(--line);overflow:hidden}
+.us-cap-fill{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--accent)}
+.us-cap-fill[data-tone=warn]{background:#d19a3a}
+.us-cap-fill[data-tone=error]{background:#a24332}
+.us-cap-form{display:grid;gap:10px;min-width:0}
+.op-dialog .us-cap-input{max-width:320px;font-variant-numeric:tabular-nums}
+
+/* Tokens per day: 28 to 31 thin columns, 4px rounded tops on the baseline, a 2px gap between them. */
+.us-chart{display:grid;gap:6px;min-width:0}
+.op-dialog .us-peak{font-size:12px;color:var(--muted)}
+.us-plot{display:flex;align-items:flex-end;gap:2px;height:150px;padding-top:4px;border-bottom:1px solid var(--line);background:linear-gradient(var(--line),var(--line)) top/100% 1px no-repeat;cursor:crosshair;touch-action:pan-y}
+.us-plot:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+.us-bar{position:relative;flex:1 1 0;min-width:0;height:100%;display:flex;align-items:flex-end}
+.us-fill{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--accent);opacity:.72}
+.us-bar.us-on .us-fill{opacity:1}
+.us-bar.us-on::after{content:'';position:absolute;inset:0 -1px;border-radius:4px 4px 0 0;background:var(--accent);opacity:.08;z-index:-1}
+.us-ahead .us-fill{background:none}
+.us-ticks{position:relative;height:16px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.us-tick{position:absolute;top:0;transform:translateX(-50%)}
+.op-dialog .us-readout{min-height:22px;font:600 14px/1.45 var(--font-ui);color:var(--ink);font-variant-numeric:tabular-nums}
+.us-table{width:100%;margin-top:6px;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.us-table th,.us-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}
+.us-table th:first-child{text-align:left;font-weight:400}
+.us-table thead th{font-weight:600;color:var(--muted)}
+
+/* Breakdowns: ranked rows, the label and its value on one line, a thin bar under them against the largest row. */
+.us-breaks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px}
+.us-break{align-content:start}
+.us-rows{display:grid;align-content:start;gap:10px;margin:0;padding:0;list-style:none}
+.us-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:baseline;min-width:0}
+.us-row-label{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+.us-row-value{font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.us-track{grid-column:1/-1;height:8px;border-radius:999px;background:var(--paper-2)}
+.us-meter{display:block;height:100%;border-radius:999px;background:var(--accent)}
+
+@media(max-width:600px){
+  .us-breaks{grid-template-columns:minmax(0,1fr)}
+  .us-plot{height:120px;gap:1px}
+  .op-dialog .us-cap-input{max-width:none}
+}
