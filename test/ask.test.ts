@@ -10,6 +10,7 @@ import {Town} from '../src/engine.ts';
 import {allRoles} from '../src/roles.ts';
 import {Store,type Goal} from '../src/store.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 // Goal rounds wait a minute by default, so the tests that do not need rounds never see one start.
@@ -20,7 +21,7 @@ const fixture=(providers:Record<string,Provider>={})=>{
   const town=new Town(store,slow,providers);town.autonomy=()=>'balanced';
   return {store,town};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(10);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+name+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 const asides=(store:Store)=>store.state.messages.filter(m=>m.aside);

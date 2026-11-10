@@ -143,8 +143,32 @@ test('Save cap posts the number; a bad number never posts; Remove cap posts null
   assert.match(viewer.dialog.querySelector('.us-cap').textContent, new RegExp(CAP_DENIED));
 });
 
-test('app.js opens Usage from ☰ and openSurface', () => {
-  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  assert.match(app, /initUsagePanel\(\{town:\(\)=>state\}\)/);
+test('Usage joins Money in the Moonvault: the panel draws into its Usage tab, and openSurface opens it there', async () => {
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(app, /initUsagePanel\(\{town:\(\)=>state,mount:\{dialog:\$\('treasury-dialog'\),body:\$\('vault-usage-body'\),lede:\$\('vault-usage-lede'\),show:\(\)=>openTreasury\('usage'\)/);
   assert.match(app, /usage:\(\)=>void usagePanel\.open\(\)/);
+  const {ROWS} = await import('../public/settings-menu.js');
+  assert.ok(!ROWS.includes('usage'), 'not a ☰ row');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(html, /<div id="vault-usage" class="vault-pane vault-usage op-scope" role="tabpanel" aria-labelledby="vault-tab-usage" hidden><p id="vault-usage-lede" class="op-lede"><\/p><div id="vault-usage-body" class="op-body"><\/div><\/div><\/dialog>/);
+});
+
+test('mounted in another panel, Usage opens that panel instead of a dialog of its own, and loads when asked', async () => {
+  const doc = fakeDocument();
+  const host = doc.createElement('dialog'), lede = doc.createElement('p'), body = doc.createElement('div');
+  host.append(lede, body);
+  doc.body.append(host);
+  host.open = true;
+  const shown = [];
+  const {fetchImpl} = fakeFetch({'GET /api/usage': data, 'GET /api/routines': {routines: []}});
+  const panel = createUsagePanel({doc, win: {addEventListener() {}}, fetchImpl, locale: 'en-GB', now: () => Date.parse('2026-11-07T12:00:00Z'),
+    mount: {dialog: host, body, lede, show: () => shown.push('usage'), showing: () => true}});
+  assert.equal(doc.body.querySelectorAll('dialog').length, 1, 'no dialog of its own');
+  assert.equal(panel.dialog, host);
+  await panel.open();
+  assert.deepEqual(shown, ['usage'], 'open() asks the host to show its Usage tab');
+  await panel.load();
+  await settle();
+  assert.match(lede.textContent, /^What the town used/);
+  assert.deepEqual(body.querySelectorAll('dt').map(n => n.textContent), ['Tokens', 'Calls', 'Cost'], 'the host body holds the same panel');
 });

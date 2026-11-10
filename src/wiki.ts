@@ -13,7 +13,7 @@ export const KINDS:WikiKind[]=['person','project','topic','preference'];
 const SLUG=/^[a-z0-9][a-z0-9-]{0,59}$/;
 export const slugify=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+/,'').slice(0,60).replace(/-+$/,'');
 // Duplicate pairs above this word overlap are flagged. Calibrated on the owner's 717 notes (see the commit report).
-const DUPLICATE=0.6;
+export const DUPLICATE=0.6;
 // Words that label a note rather than name a thing ("Round 6", "Fact:", "UTC 1 Nov").
 const LABEL=new Set('round goal fact facts hypothesis decision note lesson update status the a an and of for to in on at by with from is are not no new step utc gmt am pm jan feb mar apr may jun jul aug sep oct nov dec monday tuesday wednesday thursday friday saturday sunday'.split(' '));
 // Common words that never make a topic page on their own.
@@ -23,7 +23,7 @@ export const wikiOf=(store:Store):Wiki=>memoryFor(dirname(store.file),store.stat
 const notesOf=(events:Event[])=>events.filter(e=>e.type==='memory.noted');
 const noteLine=(e:Event)=>`- (${String(e.at).slice(0,10)}) ${String(e.data?.title??'').replace(/\s+/g,' ').trim()}: ${String(e.data?.text??'').replace(/\s+/g,' ').trim().slice(0,280)}`;
 const words=(e:Event)=>new Set(tokenize(`${e.data?.title??''} ${e.data?.text??''}`));
-function overlap(a:Set<string>,b:Set<string>){let n=0;for(const t of a)if(b.has(t))n++;return n/((a.size+b.size-n)||1);}
+export function overlap(a:Set<string>,b:Set<string>){let n=0;for(const t of a)if(b.has(t))n++;return n/((a.size+b.size-n)||1);}
 
 /** The Markdown mirror. Frontmatter values are JSON, which YAML reads as flow scalars and sequences. */
 function mirror(dir:string,p:WikiPage){
@@ -146,6 +146,16 @@ export function ownerSave(store:Store,slug:string,input:{title?:string;kind?:Wik
   const titles=new Map(notesOf(store.state.events).map(e=>[`note:${e.id}`,String(e.data?.title??'')]));
   const kept=(old?.duplicates??[]).filter(pair=>pair.every(id=>{const t=titles.get(id);return !!t&&input.body.includes(t);}));
   save(store,{slug,title:input.title?.trim()||old?.title||slug,kind:input.kind??old?.kind??'topic',by:'owner',sources:old?.sources??[],body:lines.join('\n'),owner,duplicates:kept});
+}
+/** One line on the owner-preferences page (For you's dismiss reasons, plan 9.9): a wiki.line when the page exists, a new page otherwise
+ *  (replay drops a line for a page it does not have). Nothing once the owner forgot the page. */
+export function preferenceLine(store:Store,text:string,by='for-you'){
+  const slug='owner-preferences',w=wikiOf(store);
+  if(w.forgotten.has(slug))return;
+  const line=`- (${new Date().toISOString().slice(0,10)}) ${text.replace(/\s+/g,' ').trim()}`;
+  if(!w.pages.has(slug))return save(store,{slug,title:'Owner preferences',kind:'preference',by,sources:[],body:line,owner:[],duplicates:[]});
+  store.emit('wiki.line',{slug,line,sources:[],by});
+  try{mirror(dirname(store.file),wikiOf(store).pages.get(slug)!);}catch{/* mirror only */}
 }
 /** Forget: the page goes, its notes leave lookup and lessons (they stay in the journal), and the organiser never makes it again. */
 export function forget(store:Store,slug:string){

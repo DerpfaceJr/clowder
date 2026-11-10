@@ -166,9 +166,11 @@ test('Remove asks first, then takes the token off this computer', async () => {
   assert.match(p.body().textContent, /Telegram is removed\./);
 });
 
-test('☰ > Devices & AI links to Telegram on the host only, and app.js wires it', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(html, /<section id="settings-devices"[^]*?<button id="telegram-open" data-owner data-host hidden aria-haspopup="dialog" data-note="[^"]+">Telegram<\/button>/);
+test('the Post office links to Telegram under Channels on the host only, and app.js wires it', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(html, /<div class="menu-items po-items" data-items="channels"><button id="telegram-open" data-owner data-host hidden aria-haspopup="dialog" data-note="[^"]+">Telegram<\/button>/);
+  const menu = html.slice(html.indexOf('<dialog id="town-menu"'), html.indexOf('</dialog>', html.indexOf('<dialog id="town-menu"')));
+  assert.ok(!menu.includes('id="telegram-open"'), 'no longer in ☰');
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(app, /const telegramPanel=createTelegramPanel\(\{button:\$\('telegram-open'\)\}\);\nvoid telegramPanel\.probe\(\);/);
   assert.match(app, /telegram:\(\)=>void telegramPanel\.open\(\)/);

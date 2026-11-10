@@ -3,6 +3,7 @@
 // Every count adds rows through goals.ts rowTokens, so a row with no number adds nothing and each total is a floor.
 import type {FastifyInstance,FastifyReply,FastifyRequest} from 'fastify';
 import {isOwner} from './access.ts';
+import {OWNER} from './pairing.ts';
 import {budgetSpent,dayKey,finite,goalOfTasks,rowTokens} from './goals.ts';
 import {hostZone} from './routines.ts';
 import type {State} from './store.ts';
@@ -15,26 +16,27 @@ export type Tally={tokens:number;input:number;output:number;calls:number;unrepor
 const tally=():Tally=>({tokens:0,input:0,output:0,calls:0,unreported:0});
 const add=(t:Tally,u:any)=>{const n=rowTokens(u);t.calls++;if(n===null){t.unreported++;return;}t.tokens+=n;if(finite(u.input))t.input+=u.input;if(finite(u.output))t.output+=u.output;};
 // cost: a sum only when every row carries one. Plan and API rows are journaled with cost null, so it stays unknown, never 0.
-export type MonthUsage={month:string;total:Tally;cost:number|null;days:Record<string,Tally>;cats:Record<string,Tally>;modes:Record<string,Tally>;goals:Record<string,Tally>;routines:Record<string,Tally>};
+// people (plan 10.9): by person id; a row with no by is the owner's (or the town's), keyed OWNER.
+export type MonthUsage={month:string;total:Tally;cost:number|null;days:Record<string,Tally>;cats:Record<string,Tally>;modes:Record<string,Tally>;goals:Record<string,Tally>;routines:Record<string,Tally>;people:Record<string,Tally>};
 
 /** This month and last, in one pass over the usage rows. Goals and routines include their delegated children, as their budgets do. */
 export function usageReport(state:State,now=new Date()):{current:MonthUsage;previous:MonthUsage}{
   const keys=[monthKey(now),monthKey(new Date(now.getFullYear(),now.getMonth()-1,1))];
-  const months:MonthUsage[]=keys.map(month=>({month,total:tally(),cost:0,days:{},cats:{},modes:{},goals:{},routines:{}}));
+  const months:MonthUsage[]=keys.map(month=>({month,total:tally(),cost:0,days:{},cats:{},modes:{},goals:{},routines:{},people:{}}));
   const goalOf=goalOfTasks(state),routineOf=goalOfTasks(state,'routine');
   const bump=(rec:Record<string,Tally>,k:string|undefined,u:any)=>{if(k)add(rec[k]??=tally(),u);};
   for(const u of state.usage){
     const day=dayKey(new Date(u.at)),m=months[keys.indexOf(day.slice(0,7))];if(!m)continue;
     add(m.total,u);m.cost=m.cost!==null&&finite(u.cost)?m.cost+u.cost:null;
-    bump(m.days,day,u);bump(m.cats,u.cat,u);bump(m.modes,u.mode,u);bump(m.goals,goalOf(u.task),u);bump(m.routines,routineOf(u.task),u);
+    bump(m.days,day,u);bump(m.cats,u.cat,u);bump(m.modes,u.mode,u);bump(m.goals,goalOf(u.task),u);bump(m.routines,routineOf(u.task),u);bump(m.people,u.by??OWNER,u);
   }
   return {current:months[0],previous:months[1]};
 }
 
-/** This month's tokens, a floor. Rows are in journal order, so the walk from the end stops at the first older month: it runs before every model step. */
-export function monthTokens(state:State,now=new Date()){
+/** This month's tokens, a floor. by (plan 10.9): only the rows a team member's trees caused, when given. Rows are in journal order, so the walk from the end stops at the first older month: it runs before every model step. */
+export function monthTokens(state:State,now=new Date(),by?:string){
   const key=monthKey(now);let total=0;
-  for(let i=state.usage.length-1;i>=0;i--){const k=monthKey(new Date(state.usage[i].at));if(k<key)break;if(k===key)total+=rowTokens(state.usage[i])??0;}
+  for(let i=state.usage.length-1;i>=0;i--){const k=monthKey(new Date(state.usage[i].at));if(k<key)break;if(k===key&&(by===undefined||state.usage[i].by===by))total+=rowTokens(state.usage[i])??0;}
   return total;
 }
 /** The one cap rule: a cap is set, this month has reached it, and the owner has not let this month run past it. */

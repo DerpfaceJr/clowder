@@ -34,6 +34,13 @@ Cat Town itself is released under the MIT licence (see [LICENSE](LICENSE)). The 
 - Version 1.4.4, MIT. Draws the pairing link's QR code (`src/setup-routes.ts`).
 - Copyright (c) 2009 Kazuhiko Arase.
 
+## Preact, @preact/signals and htm
+
+- `preact` 11.0.2, MIT. Copyright (c) 2015-present Jason Miller. Draws the chat's thread view (`public/chat-thread.js`, plan 8.6).
+- `@preact/signals` 2.11.3 and `@preact/signals-core` 1.14.4, MIT. Copyright (c) 2022-present Preact Team. The working line's clock in the thread view.
+- `htm` 3.1.1, Apache-2.0. Copyright 2018 Google Inc. The thread view's markup as tagged templates, so there is no build step.
+- Vendored as plain ES modules in `public/vendor/preact/`, each package's licence text beside them. `public/vendor/preact/README.md` lists the source files with their sha256 and the two edits made to them (import paths, source map comment).
+
 ## @playwright/mcp
 
 - Version 0.0.83, Apache-2.0. Used by the cats' browser, which runs it as a child process.

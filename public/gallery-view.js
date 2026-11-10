@@ -15,6 +15,21 @@ export function artifactPath(id, raw = false) {
   return UUID.test(String(id)) ? `/artifacts/${id}${raw ? '/raw' : ''}` : null;
 }
 
+// The kinds the reader shows as text (textViewer): these get Copy (plan 11.19, F6).
+export const TEXT_KINDS = ['markdown', 'text', 'json'];
+
+/**
+ * Download for one artifact (plan 11.19, F6): the file under the artifact's own title, with the extension it was saved with. The plain
+ * route, not raw: Chromium names a download after raw's Content-Disposition ("markdown-<id>.md") over the download attribute
+ * [n=1 each; headless Edge on a scratch server, 2026-11-09; MEASURED]. Characters no file system takes become spaces.
+ */
+export function downloadOf(a) {
+  const ext = /\.([a-z0-9]{1,8})$/i.exec(String(a?.file ?? ''))?.[1]?.toLowerCase();
+  let name = String(a?.title ?? '').replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120).replace(/[. ]+$/, '') || 'artifact';
+  if (ext && !name.toLowerCase().endsWith(`.${ext}`)) name += `.${ext}`;
+  return {href: artifactPath(a?.id), name};
+}
+
 export function filterArtifacts(list, {kind = 'all', project = 'all'} = {}) {
   return list.filter(a => (kind === 'all' || a.kind === kind) && (project === 'all' || a.project === project));
 }
@@ -117,6 +132,45 @@ const el = (tag, props = {}, ...children) => {
   return node;
 };
 
+// Plan 11.24 (N17): the directory's write services (src/connector-directory.json ids) and where a delivery to each one lands.
+const DELIVER = {notion: 'my Notion as a new page', 'google-workspace': 'my Google Drive', 'ms-365': 'my OneDrive'};
+
+/**
+ * What "Deliver to" lists, from GET /api/connectors: a Notion, Google Workspace or Microsoft 365 connector (or a labelled account of one)
+ * that is on, connected, given to a cat, and has a tool that writes that is not Off. [{id, name, to}]; the name drops "(trial)".
+ */
+export function writeServices(connectors) {
+  const to = c => DELIVER[c?.entry ?? c?.id];
+  return (Array.isArray(connectors) ? connectors : []).filter(c => to(c) && c.enabled && c.status === 'connected' && c.cats?.length && c.tools?.some(t => !t.readOnly && t.permission !== 'off'))
+    .map(c => ({id: c.id, name: String(c.name ?? '').replace(/\s*\(trial\)/i, '').trim(), to: to(c)}));
+}
+
+/** The write services, read now. The route is owner-only: a viewer, a failed read or an odd answer reads as none, so the menu hides. */
+export async function readServices(fetchImpl) {
+  try { const r = await fetchImpl('/api/connectors', {cache: 'no-store'}); return r.ok ? writeServices((await r.json())?.connectors) : []; } catch { return []; }
+}
+
+// ponytail: inline styles (a 44 px summary that reads as a button); move them to a stylesheet once a row owns gallery-view.css and chat-sheet.css.
+const DELIVER_SUMMARY = 'display:inline-flex;align-items:center;min-height:var(--tap);padding:0 var(--space-4);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper);font-weight:600;cursor:pointer';
+
+/**
+ * "Deliver to" (plan 11.24): a native disclosure with one button per service. pick(service) sends the request and resolves to the line to
+ * show. Every button waits while a request is on its way, so one tap sends one request. null with no service, so nothing shows.
+ */
+export function deliverMenu(services, pick) {
+  if (!services?.length) return null;
+  const note = el('span', {className: 'deliver-note', role: 'status'});
+  const summary = el('summary', {textContent: 'Deliver to', style: DELIVER_SUMMARY});
+  const buttons = services.map(s => el('button', {type: 'button', textContent: s.name, title: `Ask a cat to save this to ${s.to}`, style: 'min-height:var(--tap)', onclick: async () => {
+    for (const b of buttons) b.disabled = true;
+    try { note.textContent = await pick(s); menu.removeAttribute('open'); summary.focus?.(); } catch (err) { note.textContent = err.message; }
+    for (const b of buttons) b.disabled = false;
+  }}));
+  const menu = el('details', {className: 'deliver'}, summary,
+    el('span', {role: 'group', 'aria-label': 'Deliver to', style: 'display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2)'}, ...buttons));
+  return el('span', {className: 'deliver-to', style: 'display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);max-width:100%'}, menu, note);
+}
+
 /** artifactParts as nodes: the text, and a link-styled button per id (its short form) that calls onOpen(id). */
 export function artifactNodes(text, onOpen, max) {
   return artifactParts(text, max).map(p => (p.id
@@ -126,10 +180,10 @@ export function artifactNodes(text, onOpen, max) {
 
 /**
  * Mounts the gallery into root and the viewer onto host (the page body; the Archive's dialog, so the viewer sits in its
- * top layer). catName turns a maker's id into a name. fetchImpl is injectable for the browser check.
+ * top layer). catName turns a maker's id into a name. fetchImpl, clipboard and win are injectable for the tests.
  */
-export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args), host = document.body, catName = id => id} = {}) {
-  let list = [], titles = new Map(), kind = 'all', project = 'all';
+export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args), host = document.body, catName = id => id, clipboard = globalThis.navigator?.clipboard, win = globalThis} = {}) {
+  let list = [], titles = new Map(), services = [], kind = 'all', project = 'all';
   const status = el('p', {className: 'gallery-note', role: 'status'});
   const kindSelect = el('select', {'aria-label': 'Filter by kind'});
   const projectSelect = el('select', {'aria-label': 'Filter by project'});
@@ -197,8 +251,37 @@ export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args)
     if (!path) return;
     if (a.kind === 'image') return imageViewer(a, path);
     if (a.kind === 'html' || a.kind === 'svg') return pageViewer(a, path);
-    if (a.kind === 'video') return frame(a.title || 'Video', el('div'), el('div', {className: 'gallery-stage'}, el('video', {src: path, controls: true, preload: 'metadata', className: 'gallery-video'})));
+    if (a.kind === 'video') return frame(a.title || 'Video', el('div', {className: 'gallery-bar'}, download(a), deliver(a)), el('div', {className: 'gallery-stage'}, el('video', {src: path, controls: true, preload: 'metadata', className: 'gallery-video'})));
     return textViewer(a, path);
+  }
+
+  // Download (plan 11.19, F6) saves the file under the artifact's title.
+  function download(a) {
+    const d = downloadOf(a);
+    return el('a', {href: d.href, download: d.name, title: d.name, textContent: 'Download'});
+  }
+
+  // Deliver to (plan 11.24). The send is chat-thread.js's, which knows the requests and the reasoning: it answers the 'deliver-to' event
+  // by setting detail.sent, a follow-up in the artifact's own request where it can be one.
+  function deliver(a) {
+    return deliverMenu(services, service => {
+      const detail = {task: a.task ?? null, ids: [a.id], service};
+      win.dispatchEvent?.(new CustomEvent('deliver-to', {detail}));
+      return detail.sent ?? Promise.reject(new Error('Ask the Mayor in its chat instead.'));
+    });
+  }
+
+  // Copy (plan 11.19, F6), as chat-thread.js copies a result: says for a moment whether it could. The text is read as the reader
+  // opens, so a tap writes it at once: Safari refuses a clipboard write that waits on the network.
+  function copyButton(read) {
+    let ready = null;
+    read.then(text => { ready = text; }, () => {});
+    const button = el('button', {type: 'button', textContent: 'Copy'});
+    button.onclick = async () => {
+      try { await clipboard.writeText(ready ?? await read); button.textContent = 'Copied'; } catch { button.textContent = 'Copy it by hand'; }
+      setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+    };
+    return button;
   }
 
   function imageViewer(a, path) {
@@ -216,21 +299,23 @@ export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args)
       el('button', {type: 'button', textContent: '−', 'aria-label': 'Zoom out', onclick: () => zoom(scale / 1.25)}),
       el('button', {type: 'button', textContent: '+', 'aria-label': 'Zoom in', onclick: () => zoom(scale * 1.25)}),
       el('button', {type: 'button', textContent: 'Reset', onclick: () => { scale = 1; x = 0; y = 0; paint(); }}),
-      el('a', {href: artifactPath(a.id, true), target: '_blank', rel: 'noopener noreferrer', textContent: 'Open in new tab'}));
+      el('a', {href: artifactPath(a.id, true), target: '_blank', rel: 'noopener noreferrer', textContent: 'Open in new tab'}),
+      download(a), deliver(a));
     frame(a.title || 'Image', bar, stage);
   }
 
   // A page or drawing in a cozy browser frame. The frame has no allow-same-origin, so the page cannot read the town.
   function pageViewer(a, path) {
-    frame(a.title || 'Page', el('div'), browser({src: path, address: a.title || 'Untitled page', editable: false, rawHref: artifactPath(a.id, true)}));
+    frame(a.title || 'Page', el('div'), browser({src: path, address: a.title || 'Untitled page', editable: false, rawHref: artifactPath(a.id, true), save: download(a), send: deliver(a)}));
   }
 
   function openWeb() {
     frame('Web view', el('div'), browser({src: 'about:blank', address: '', editable: true, rawHref: null}));
   }
 
-  // The browser frame: a fake address bar, Reload, Open in new tab (or Open in browser), and device width toggles.
-  function browser({src, address, editable, rawHref}) {
+  // The browser frame: a fake address bar, Reload, Open in new tab (or Open in browser), device width toggles, and an artifact's Download
+  // and Deliver to.
+  function browser({src, address, editable, rawHref, save = null, send = null}) {
     const addressInput = el('input', {type: 'url', value: editable ? '' : address, placeholder: 'https://', readOnly: !editable, 'aria-label': editable ? 'Address to preview' : 'Address', maxLength: 2000, spellcheck: false, autocomplete: 'off'});
     const note = el('p', {className: 'gallery-note', role: 'status'});
     const iframe = el('iframe', {className: 'gallery-browser-frame', src, title: address, sandbox: SANDBOX, referrerPolicy: 'no-referrer'});
@@ -255,7 +340,7 @@ export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args)
       el('button', {type: 'button', textContent: 'Reload', onclick: () => { iframe.src = iframe.getAttribute('src') || 'about:blank'; }}));
     const bar = el('div', {className: 'gallery-browser-bar'}, form,
       el('div', {className: 'gallery-widths', role: 'group', 'aria-label': 'Device width'}, ...Object.values(widths)),
-      open);
+      open, save, send);
     setWidth('desktop');
     if (!editable) note.textContent = 'Sandboxed: this page cannot reach the town, its cookies or its API.';
     return el('div', {className: 'gallery-browser'}, bar, note, el('div', {className: 'gallery-browser-stage'}, iframe));
@@ -263,11 +348,11 @@ export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args)
 
   async function textViewer(a, path) {
     const body = el('pre', {className: 'gallery-text', textContent: 'Loading…'});
-    frame(a.title || 'Text', el('div', {className: 'gallery-bar'}, el('span', {textContent: KIND_LABEL[a.kind] ?? a.kind}), el('a', {href: artifactPath(a.id, true), target: '_blank', rel: 'noopener noreferrer', textContent: 'Open in new tab'})), el('div', {className: 'gallery-stage'}, body));
+    const read = fetchImpl(path, {cache: 'no-store'}).then(response => { if (!response.ok) throw new Error('This file could not be read.'); return response.text(); });
+    frame(a.title || 'Text', el('div', {className: 'gallery-bar'}, el('span', {textContent: KIND_LABEL[a.kind] ?? a.kind}), el('a', {href: artifactPath(a.id, true), target: '_blank', rel: 'noopener noreferrer', textContent: 'Open in new tab'}),
+      download(a), TEXT_KINDS.includes(a.kind) ? copyButton(read) : null, deliver(a)), el('div', {className: 'gallery-stage'}, body));
     try {
-      const response = await fetchImpl(path, {cache: 'no-store'});
-      if (!response.ok) throw new Error('This file could not be read.');
-      let text = await response.text();
+      let text = await read;
       // Markdown is shown as preformatted text, never rendered as HTML, so nothing it contains can run.
       if (a.kind === 'json') { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* shown as saved */ } }
       body.textContent = text;
@@ -282,6 +367,7 @@ export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args)
       list = body.artifacts ?? [];
       // Project titles are the same ones the Projects panel shows. A failed read leaves the Project label generic.
       titles = new Map((await fetchImpl('/api/projects', {cache: 'no-store'}).then(r => (r.ok ? r.json() : [])).catch(() => [])).map(p => [p.id, p.title]));
+      services = await readServices(fetchImpl);
       fillFilters();
       render();
     } catch (err) {
@@ -289,16 +375,30 @@ export function createGalleryView(root, {fetchImpl = (...args) => fetch(...args)
     }
   }
 
+  /** Opens one artifact by id. An id the town does not have says so in the status line instead. */
+  function openArtifact(id) {
+    const key = String(id).toLowerCase();
+    const a = list.find(x => x.id === key || (key.length === 8 && x.id.startsWith(key)));
+    if (a) openViewer(a); else status.textContent = `No artifact ${String(id).slice(0, 8)} in this town. It may belong to another world.`;
+    return !!a;
+  }
+
+  // Plan 11.19: the palette's Artifacts rows open the Archive, then send 'open-artifact' ({detail: {id}}) on the window. Only the
+  // gallery mounted in a dialog (the Archive's) answers; the Artist tab's reader would open behind it. The Archive may first fly the
+  // camera to the notice board (memorial-transition.js FLIGHT), so the reader opens once the dialog is up and takes focus there.
+  if (host !== document.body) {
+    win.addEventListener?.('open-artifact', async event => {
+      // ponytail: polls every 50 ms for up to 4 s, past FLIGHT (1.1 s); an Archive that never opens leaves the request unanswered.
+      for (let i = 0; !host.open && i < 80; i++) await new Promise(resolve => setTimeout(resolve, 50));
+      const id = event.detail?.id;
+      if (host.open && id && !openArtifact(id)) { await load(); openArtifact(id); }
+    });
+  }
+
   return {
     load,
     close,
-    /** Opens one artifact by id. An id the town does not have says so in the status line instead. */
-    openArtifact(id) {
-      const key = String(id).toLowerCase();
-      const a = list.find(x => x.id === key || (key.length === 8 && x.id.startsWith(key)));
-      if (a) openViewer(a); else status.textContent = `No artifact ${String(id).slice(0, 8)} in this town. It may belong to another world.`;
-      return !!a;
-    },
+    openArtifact,
     get count() { return list.length; },
     get viewing() { return !viewer.hidden; },
   };

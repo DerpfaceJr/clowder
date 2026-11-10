@@ -13,10 +13,11 @@ import {Town} from '../src/engine.ts';
 import {Store} from '../src/store.ts';
 import {BUILTINS, type ToolRuntime} from '../src/tool-runtimes.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
-async function until(fn: () => boolean, ms = 10_000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail('Timed out waiting for state transition'); }
+const until = untilEvery(10);
 const TOOL_CARD = [ALLOW_ONCE, THIS_CAT, EVERY_CAT, 'Deny'];
 // One tool per effect class, named so effectOf classes it (connectors.ts).
 const CLASSES = {get_report: 'read', save_note: 'write', publish_post: 'public', pay_invoice: 'money', delete_file: 'delete'} as const;

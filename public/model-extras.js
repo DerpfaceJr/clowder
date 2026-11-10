@@ -1,6 +1,6 @@
 // Two more entries in the AI models panel (models-panel.js): the Anthropic API key (src/models.ts, anthropic.key through POST
 // /api/models/settings) and Hermes (experimental), the Mayor's optional sidecar (src/hermes.ts, plan 4.9-4.13). Hermes is switched on in
-// town.config.json (hermes.enabled) and read back here from GET /api/hermes/runtime, which exists only while it is on: 404 means off.
+// town.config.json (hermes.enabled) and read back here from GET /api/hermes/runtime: {enabled:false} means off (a 404 too, from an older server).
 // While it is on, "Hermes (experimental)" joins the Mayor's Reasoning menu (withHermes, used by app.js); /api/chat takes mode hermes then.
 // The pure helpers are exported for Node tests; the DOM is built with createElement and textContent only, with the panel's own classes.
 import {savingButton} from './ai-settings.js';
@@ -36,7 +36,7 @@ export function anthropicDraft(key, saved) {
 export async function readHermes(fetchImpl = (...args) => fetch(...args)) {
   try {
     const r = await readJson(fetchImpl, '/api/hermes/runtime');
-    if (r.status === 404) return {on: false};
+    if (r.status === 404 || r.data?.enabled === false) return {on: false};
     if (r.status === 401 || r.status === 403) return {on: false, denied: true};
     if (!r.ok) return {on: true, error: r.data.error || 'Hermes did not answer.'};
     return {on: true, runtime: r.data};

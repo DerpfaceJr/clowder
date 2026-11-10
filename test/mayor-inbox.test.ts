@@ -8,6 +8,7 @@ import {Store,type Task} from '../src/store.ts';
 import {Town} from '../src/engine.ts';
 import {projects} from '../src/projects.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 // Short pauses keep goal rounds fast; the real default is config.goals.roundPauseSeconds.
@@ -18,7 +19,7 @@ const fixture=(providers:Record<string,Provider>,file=join(mkdtempSync(join(tmpd
   const town=new Town(store,fast,providers);
   return {file,store,town};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,5));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(5);
 const pause=(ms=25)=>new Promise(r=>setTimeout(r,ms));
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+name+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});

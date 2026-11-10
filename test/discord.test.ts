@@ -79,6 +79,7 @@ test('Discord: owner-only DM pairing by code, inbox, buttons by class, recipient
     fake.dm(OWNER,OWNER_DM,'Plan my week');
     const inbox=desk.store.state.tasks.find(t=>t.text==='Plan my week')!;
     assert.equal(inbox.cat,'mayor');assert.equal(inbox.from,'owner');assert.deepEqual(inbox.inbox,{goal:false});
+    assert.ok(desk.store.state.messages.some(m=>m.from==='mailman'&&m.to==='mayor'&&m.text==='Post for you, by Discord.'),'the Mailman delivers it');
     desk.town.message('mayor','owner','Here is your week.',inbox.id);
     desk.town.message('mayor','owner','In-app only.','some-other-task');
     assert.ok(fake.to(OWNER_DM).some(c=>c.body.content==='Here is your week.'));
@@ -87,7 +88,7 @@ test('Discord: owner-only DM pairing by code, inbox, buttons by class, recipient
     // A private write: Allow and Deny buttons. The stranger's tap gets nothing; the owner's tap resolves it with device 'discord' and clears the buttons.
     const write=await desk.ask(WRITE,{note:'groceries'});
     const notice=fake.to(OWNER_DM).find(c=>/update_note/.test(c.body.content))!;
-    assert.match(notice.body.content,/Scholar needs you: .*update_note/i);
+    assert.match(notice.body.content,/Needs you: .*update_note/i);
     assert.deepEqual(notice.body.components,[{type:1,components:[{type:2,style:1,label:'Allow once',custom_id:`a:${write.id}:0`},{type:2,style:2,label:'Deny',custom_id:`a:${write.id}:1`}]}]);
     const before=fake.calls.length;
     fake.tap(STRANGER,STRANGER_DM,`a:${write.id}:0`);

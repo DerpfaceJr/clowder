@@ -13,10 +13,11 @@ import {SeasonHost} from '../src/season-host.ts';
 import {isOwner} from '../src/access.ts';
 import {Pairing} from '../src/pairing.ts';
 import {installRemoteAccess} from '../src/remote-access.ts';
+import {foundingCats} from '../src/roles.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const config = loadConfig(root);
-const FOUNDERS = config.cats.map((c: {id: string}) => c.id).sort();
+const FOUNDERS = foundingCats(config).map(c => c.id).sort();
 
 function setup(seed?: (dir: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'worlds-'));

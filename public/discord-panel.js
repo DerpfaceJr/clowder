@@ -1,4 +1,4 @@
-// Discord (plan 3.5, D7): talk to the Mayor and answer decisions from a direct message with your own bot. ☰ > Devices & AI > Discord opens this
+// Discord (plan 3.5, D7): talk to the Mayor and answer decisions from a direct message with your own bot. Post office > Channels > Discord opens this
 // panel on the host computer only: the bot token is a secret and the pairing code makes an owner device, as the phone invite does.
 // Three steps, each shown once the one before it is done: paste the bot token from the Discord Developer Portal, make the bot reachable (share a
 // server with it, or install it to your own account) so you can DM it, then DM it the one-time code. The paired DM shows here and in Devices as
@@ -34,7 +34,7 @@ function injectStyles(doc) {
 
 const h = (tag, props, ...children) => el(tag, props, children.flat().filter(c => c !== null && c !== undefined && c !== false));
 
-/** button: the ☰ entry, shown once the host's route answers. Returns {open, close, refresh, probe, dialog}. */
+/** button: the Post office entry, shown once the host's route answers. Returns {open, close, refresh, probe, dialog}. */
 export function createDiscordPanel({button = null, doc = document, win = globalThis.window, fetchImpl = (...args) => fetch(...args), ask = confirmDialog, now = () => Date.now()} = {}) {
   injectStyles(doc);
   const ui = {status: null, denied: false, code: null, busy: '', msg: null, tokenMsg: null, loaded: false, changing: false};

@@ -74,3 +74,19 @@ export function createCameraFlight({camera, controls, now = () => performance.no
   }
   return {flyTo, step, view, get flying() { return !!flight; }};
 }
+
+/** The ease's speed: the share of the gap closed each second is 1 - exp(-EASE_RATE * dt), about 0.12 a frame at 60 fps (the old fixed step). */
+export const EASE_RATE = 7.7;
+/**
+ * One frame of the town's ease toward goal {position, zoom} (focusTarget in town.js): target and camera move together by 1 - exp(-dt * rate)
+ * of what is left, so the same time gives the same pose at 30 fps or 120 fps. Reduced motion lands at once. True once it has arrived.
+ */
+export function easeStep(camera, controls, goal, dt, {rate = EASE_RATE, reduced = false} = {}) {
+  const k = reduced ? 1 : 1 - Math.exp(-Math.max(0, dt) * rate), t = controls.target, p = camera.position, g = goal.position;
+  const dx = (g.x - t.x) * k, dy = (g.y - t.y) * k, dz = (g.z - t.z) * k;
+  t.set(t.x + dx, t.y + dy, t.z + dz);
+  p.set(p.x + dx, p.y + dy, p.z + dz);
+  camera.zoom += (goal.zoom - camera.zoom) * k;
+  camera.updateProjectionMatrix?.();
+  return Math.hypot(g.x - t.x, g.y - t.y, g.z - t.z) < .01 && Math.abs(camera.zoom - goal.zoom) < .01;
+}

@@ -10,19 +10,20 @@ export const FLIGHT = 1100, REVEAL = 500, FADE = 350, RETURN = 1100, QUICK = 250
 // After an Escape skip the town draws a few more frames (at least SETTLE_FRAMES_MS and two animation frames) under the sky before it pauses, so the canvas left behind
 // (seen as the sky fades on close) shows the landed camera, not the pose it had when Escape was pressed.
 export const SETTLE_FRAMES_MS = 120;
-const LOOKS = ['zoom-reveal', 'zoom-fade', 'zoom-leave'];
+const LOOKS = ['zoom-reveal', 'zoom-fade', 'zoom-quick', 'zoom-leave', 'zoom-quick-leave'];
 
 /**
  * view: createMemorialView's result. stage(): the 3D scene or null (flyTo, cameraView, tint, memorialShot, memorialScreen).
  * audio(): the sound controller or null (zoomIn, zoomOut). The clock is injectable for tests.
  * shotOf, screenOf and tone pick the place and the light: the observatory at night by default; the Archive flies to the
- * notice board (archiveShot, archiveScreen) with no tint. open(true) is the quick crossfade with no flight.
+ * notice board (archiveShot, archiveScreen) with no tint. open(true) is the quick crossfade with no flight: the 'zoom-quick' look over
+ * quickMs (app.js passes --dur-quick, plan 8.10, for a layer opened from the chat), and the same each way.
  */
 export function createMemorialTransition({view, stage = () => null, audio = () => null, win = globalThis, doc = globalThis.document,
   shotOf = scene => scene?.memorialShot?.(), screenOf = scene => scene?.memorialScreen?.(), tone = 'night',
-  reduced = () => !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  reduced = () => !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches, quickMs = QUICK,
   schedule = (fn, ms) => setTimeout(fn, ms), cancel = t => clearTimeout(t)}) {
-  let state = 'idle', cinematic = false, shot = null, home = null, stay = false, timers = [];
+  let state = 'idle', cinematic = false, brisk = false, shot = null, home = null, stay = false, timers = [];
   const later = (ms, fn) => { timers.push(schedule(fn, ms)); };
   const frames = (n, fn) => (n > 0 && win.requestAnimationFrame ? win.requestAnimationFrame(() => frames(n - 1, fn)) : fn());
   const clear = () => { for (const t of timers) cancel(t); timers = []; };
@@ -40,7 +41,8 @@ export function createMemorialTransition({view, stage = () => null, audio = () =
   function open(quick = false) {
     if (state !== 'idle') return false;
     const scene = stage();
-    shot = quick === true || reduced() ? null : shotOf(scene) || null;
+    brisk = quick === true;
+    shot = brisk || reduced() ? null : shotOf(scene) || null;
     cinematic = !!(shot && scene.flyTo);
     state = 'flying';
     stay = false;
@@ -55,9 +57,9 @@ export function createMemorialTransition({view, stage = () => null, audio = () =
     return true;
   }
   function reveal() {
-    look(cinematic ? 'zoom-reveal' : 'zoom-fade', cinematic ? screenOf(stage()) : null);
+    look(cinematic ? 'zoom-reveal' : brisk ? 'zoom-quick' : 'zoom-fade', cinematic ? screenOf(stage()) : null);
     view.show();
-    later(cinematic ? REVEAL : QUICK, settle);
+    later(cinematic ? REVEAL : brisk ? quickMs : QUICK, settle);
   }
   function settle(pauseAfter = 0) {
     clear();
@@ -74,8 +76,8 @@ export function createMemorialTransition({view, stage = () => null, audio = () =
     clear();
     state = 'closing';
     stay = reason === 'observatory'; // Show observatory: town.js glides there itself, so no fly back
-    look('zoom-leave');
-    later(cinematic ? FADE : QUICK, back);
+    look(brisk ? 'zoom-quick-leave' : 'zoom-leave');
+    later(cinematic ? FADE : brisk ? quickMs : QUICK, back);
     return true;
   }
   function back() {

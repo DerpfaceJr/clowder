@@ -48,6 +48,14 @@ export const machineSecrets=(store:SecretStore):Record<string,unknown>=>
 const portable=(store:SecretStore)=>Object.fromEntries(Object.keys(SECRET_FIELDS).flatMap(name=>Object.entries(store.of(name))).filter(([ref])=>secretIn(ref)));
 
 // A snapshot's tree, files and folders only (no link is followed), less its secrets.v2.json (re-saved below) and what is rebuilt.
+// A restored file is on the disk before it is renamed into place: after a power cut a file can keep its size and lose its bytes, and a
+// journal of zeros has no events (store.ts repairTail refuses it).
+// A read-only file cannot be opened to sync it (EPERM, EACCES): its copy stands as the copy left it, and the restore goes on.
+const fsyncFile=(file:string)=>{
+  let fd:number;
+  try{fd=openSync(file,'r+');}catch(error){if(['EPERM','EACCES'].includes((error as NodeJS.ErrnoException).code??''))return;throw error;}
+  try{fsyncSync(fd);}finally{closeSync(fd);}
+};
 function copySnapshot(from:string,to:string):number{
   let n=0;
   const walk=(src:string,dst:string,depth:string[])=>{
@@ -57,7 +65,7 @@ function copySnapshot(from:string,to:string):number{
       if(top&&(DERIVED.test(e.name)||(at.length===1&&!townEntry(e.name))))continue;
       if(at.length===1&&e.name==='secrets.v2.json')continue;
       if(e.isDirectory())walk(join(src,e.name),join(dst,e.name),at);
-      else if(e.isFile()){copyFileSync(join(src,e.name),join(dst,e.name));n++;}
+      else if(e.isFile()){copyFileSync(join(src,e.name),join(dst,e.name));fsyncFile(join(dst,e.name));n++;}
     }
   };
   walk(from,to,[]);

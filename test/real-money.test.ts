@@ -122,7 +122,7 @@ test('Pre-pay: request becomes an S quest, approval tells the Mayor, Paid is cap
   assert.throws(()=>money.markPaid(purchase.id,'12.00'),/Only an approved purchase/);
   money.decide(purchase.id,true,'Go ahead.');
   assert.throws(()=>money.decide(purchase.id,false),/already been decided/);
-  assert.equal(questList().filter(x=>x.source.kind==='purchase').length,0);
+  const owed=questList().filter(x=>x.source.kind==='purchase');assert.equal(owed.length,1);assert.equal(owed[0].action.label,'Mark paid');assert.equal(owed[0].needsYou,true);
   assert.match(store.state.messages.at(-1).text,/Purchase approved: Namecheap 12\.00 USD\. I will pay it myself; nothing has been paid yet/);
   assert.equal(money.purchases()[0].status,'approved');
   assert.throws(()=>money.markPaid(purchase.id,'12.01'),/Record at most 12\.00 USD/);
@@ -322,6 +322,33 @@ test('no secret reaches the state, any client response, the journal, the ledger 
     assert.ok(readFileSync(join(dir,'secrets.v2.json'),'utf8').includes(KEY));
     assert.ok(!readFileSync(join(dir,'real-money-secrets.json'),'utf8').includes(KEY));
   }finally{await app.close();await main.close();}
+});
+
+test('Autopay: a purchase within the limits from work a For you card started waits for the owner (plan 9.7); the owner\'s own is auto-approved',async()=>{
+  const {money,store}=await autopay();
+  const fake=async(messages:any[])=>messages.some(m=>m.role==='tool')||String(messages.at(-1)?.content??'').startsWith('Record for the town')?{message:{role:'assistant',content:'ok'}}
+    :{message:{role:'assistant',content:null,tool_calls:[{id:'c1',type:'function',function:{name:'request_purchase',arguments:JSON.stringify(ask())}}]}};
+  const town=new Town(store,config,{fake} as any);town.realMoney=money;
+  try{
+    const settled=async(id:string)=>{for(let i=0;i<500&&!['done','failed'].includes(store.state.tasks.find(t=>t.id===id)?.status??'');i++)await new Promise(r=>setTimeout(r,10));};
+    await settled(town.inbox('The owner started a For you card. Buy what it says.','fake','suggestion'));
+    assert.deepEqual(money.purchases().map(p=>[p.status,p.note]),[['pending','This work began from a For you card, so it waits for the owner.']]);
+    await settled(town.inbox('Buy the domain.','fake'));
+    assert.deepEqual(money.purchases().map(p=>p.status).sort(),['auto-approved','pending']);
+  }finally{town.dispose();}
+});
+
+test('Autopay: a purchase within the limits from a team member\'s tree waits for the owner (plan 10.7)',async()=>{
+  const {money,store}=await autopay();
+  const fake=async(messages:any[])=>messages.some(m=>m.role==='tool')||String(messages.at(-1)?.content??'').startsWith('Record for the town')?{message:{role:'assistant',content:'ok'}}
+    :{message:{role:'assistant',content:null,tool_calls:[{id:'c1',type:'function',function:{name:'request_purchase',arguments:JSON.stringify(ask())}}]}};
+  const town=new Town(store,config,{fake} as any);town.realMoney=money;
+  try{
+    const id=town.submit('mayor','Buy the domain for the team.','fake',{by:'p-ana'});
+    for(let i=0;i<500&&!['done','failed'].includes(store.state.tasks.find(t=>t.id===id)?.status??'');i++)await new Promise(r=>setTimeout(r,10));
+    assert.deepEqual(money.purchases().map(p=>[p.status,p.note]),[['pending','A team member’s work asked for this, so it waits for the owner.']]);
+    assert.equal(store.state.events.find(e=>e.type==='purchase.requested')?.by,'p-ana','the request is journaled as hers');
+  }finally{town.dispose();}
 });
 
 test('the Mayor is offered request_purchase only while the module is on, and the handler re-checks',async()=>{

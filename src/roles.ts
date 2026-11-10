@@ -1,8 +1,13 @@
-// Roles a town can use. `cats` in town.config.json are the founders of a new world (the Mayor alone); `roleCatalogue`
-// holds the rest, which the Mayor recruits with create_cat when a task needs them. One place reads both lists.
-export type RoleDef = {id: string; name: string; role: string; color: string; icon: string; style?: string};
+// Roles a town can use. `cats` in town.config.json are the founders of a new world (the Mayor); `roleCatalogue`
+// holds the rest, which the Mayor recruits with create_cat when a task needs them. A catalogue role marked `founder`
+// (the Mailman) also founds every new world, and an older world recruits it once on load. One place reads both lists.
+export type RoleDef = {id: string; name: string; role: string; color: string; icon: string; style?: string; founder?: boolean};
 
 export const roleCatalogue = (config: any): RoleDef[] => config.roleCatalogue ?? [];
+/** The catalogue roles every world has from the start. */
+export const founderRoles = (config: any): RoleDef[] => roleCatalogue(config).filter(r => r.founder === true);
+/** The cats a new world is founded with: `cats`, then the founder catalogue roles. */
+export const foundingCats = (config: any): RoleDef[] => [...(config.cats ?? []), ...founderRoles(config)];
 /** Every role the config defines, founders first, each id once. Tests seed full towns with this. */
 export const allRoles = (config: any): RoleDef[] =>
   [...new Map([...(config.cats ?? []), ...roleCatalogue(config)].map((r: RoleDef) => [r.id, r])).values()];

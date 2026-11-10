@@ -1,9 +1,12 @@
-// Phone, tablet and desktop chrome: the settings menu, sheet grips and house names.
+// Phone, tablet and desktop chrome: the settings menu, sheet grips, house names and the layout around the chat (plan 8.5).
 // Nothing runs at import time; the pure helpers are shared with Node tests.
 import {initSettingsNav, refreshSettingsNav} from './settings-menu.js';
 
-export const COMPACT_QUERY = '(max-width:1100px)';
+// Narrow screens (under 900px) are chat first: one sheet at a time, and the town is a strip while a sheet is open (initPaneLayout).
+export const COMPACT_QUERY = '(max-width:899px)';
 export const PHONE_QUERY = '(max-width:599px)';
+// From 1280px a left sheet and the full chat pane fit side by side over the town; below that the chat folds to its rail.
+export const TWO_PANES_QUERY = '(min-width:1280px)';
 
 // Decides a sheet after a grip gesture. dy is pointer travel in px (positive = downward).
 // A tap (tiny travel) closes the sheet, so the grip is also a close handle.
@@ -40,6 +43,7 @@ export function bindGrip(grip, {onMove, onRelease}) {
 }
 
 // A panel becomes a sheet on compact screens. Its size is kept on data-size (half or full).
+// While the town is a strip (body.town-strip) a sheet already fills the room under it: a tap or a swipe down closes it, nothing resizes.
 export function initSheet(panel, {onClose, onResize}) {
   const grip = panel.querySelector('.sheet-grip');
   if (!grip) return;
@@ -48,11 +52,220 @@ export function initSheet(panel, {onClose, onResize}) {
     onRelease: dy => {
       panel.style.transform = '';
       if (dy === null) return;
-      const next = nextSheetState(panel.dataset.size || 'half', dy);
+      const strip = panel.ownerDocument?.body?.classList?.contains('town-strip') === true;
+      const next = nextSheetState(strip ? 'half' : panel.dataset.size || 'half', dy);
       if (next === 'closed') onClose();
-      else { panel.dataset.size = next; onResize?.(next); }
+      else if (!strip) { panel.dataset.size = next; onResize?.(next); }
     },
   });
+}
+
+// ===== The layout around the chat (plan 8.5) =====
+// Under 900px the app is chat first: one sheet at a time, and while one is open the town is a 96px strip under the header
+// (body.town-strip). From 900px the chat is a pane on the right that never closes: it folds to a 56px rail (body.chat-rail). The
+// other sheets open on the left, and below 1280px a left sheet folds the chat, so two full panes never cover the town. The Inbox
+// moves into the top of the chat pane. setPanel in app.js stays the one place that opens and closes panels: it asks plan() what
+// must give way and calls sync() after every change.
+
+/** The sheets that open on the left from 900px. Cats and the Diary share the left column; the others take it alone. */
+export const LEFT_SHEETS = ['residents', 'diary', 'season', 'projects'];
+const SHARED_LEFT = ['residents', 'diary'];
+
+/**
+ * The open panels that must close when `id` opens or closes. Pure: isOpen(id) says which panels are open now.
+ * Narrow: one sheet at a time. Wide: the Inbox is part of the chat pane, so folding the chat closes the Inbox. Below 1280px,
+ * opening either of them closes the left sheets, and a left sheet (which folds the chat) closes the Inbox.
+ */
+export function rivalsOf(id, open, {narrow, twoPanes, isOpen, panels}) {
+  if (narrow) return open ? panels.filter(p => p !== id && isOpen(p)) : [];
+  const left = LEFT_SHEETS.filter(isOpen), inbox = isOpen('quests') ? ['quests'] : [];
+  if (id === 'inspector') return open ? (twoPanes ? [] : left) : inbox;
+  if (id === 'quests') return open && !twoPanes ? left : [];
+  if (!open || !LEFT_SHEETS.includes(id)) return [];
+  const others = left.filter(p => p !== id && !(SHARED_LEFT.includes(p) && SHARED_LEFT.includes(id)));
+  return twoPanes ? others : [...others, ...inbox];
+}
+
+/** Whether the chat shows as its rail: never under 900px; from 900px when the owner folded it, or a left sheet needs the room. */
+export function chatRail({narrow, folded, leftOpen, twoPanes}) {
+  return !narrow && (folded || (leftOpen && !twoPanes));
+}
+
+/** What one state change brought for the owner: replies to the owner and decisions newly waiting, by ids the previous state lacked. */
+export function newForOwner(prev, next) {
+  const fresh = (before, after, keep) => {
+    if (!Array.isArray(before) || !Array.isArray(after)) return 0;
+    const seen = new Set(before.map(x => x?.id));
+    return after.filter(x => keep(x) && !seen.has(x.id)).length;
+  };
+  return fresh(prev?.messages, next?.messages, m => m?.to === 'owner') + fresh(prev?.approvals, next?.approvals, a => a?.status === 'pending');
+}
+
+/** The cat the chat header names ("Mayor’s corner" names the Mayor), or null for any other heading. */
+export const headerCat = text => /^(.+?)[’']s corner$/.exec(String(text ?? '').trim())?.[1] ?? null;
+
+/** The rail's accessible name: whose chat it opens, and how many replies and decisions wait there unread. */
+export function railName(cat, unread = 0) {
+  const name = cat ? `Open chat with ${cat}` : 'Open chat';
+  return unread > 0 ? `${name}, ${unread} unread` : name;
+}
+
+/**
+ * The header's lead (plan 11.5, F12): what waits on the owner, said before the activity line. nouns: the Inbox's noun (plain-words.js
+ * nounOf) of each item behind the one "needs you" count (quests-panel.js needsYouCount), so the number is that count. Empty when nothing
+ * waits. One kind is named ("3 decisions waiting", "1 to-do waiting"); decisions and to-dos together name both; anything else is a thing.
+ */
+export function waitingLead(nouns) {
+  const list = [...(nouns ?? [])], n = list.length;
+  if (!n) return '';
+  const many = (k, one, more) => `${k} ${k === 1 ? one : more}`;
+  const decisions = list.filter(x => x === 'Decision').length, todos = list.filter(x => x === 'To-do').length;
+  if (decisions === n) return `${many(n, 'decision', 'decisions')} waiting`;
+  if (todos === n) return `${many(n, 'to-do', 'to-dos')} waiting`;
+  if (decisions + todos === n) return `${many(decisions, 'decision', 'decisions')} and ${many(todos, 'to-do', 'to-dos')} waiting`;
+  return `${many(n, 'thing', 'things')} waiting`;
+}
+
+/** The town strip's caption: the header's lead and its activity line, each only while the header shows it. */
+export const stripCaption = (...parts) => parts.map(p => String(p ?? '').trim()).filter(Boolean).join(' · ');
+
+/**
+ * Builds the rail and the town strip, moves the Inbox, wires the narrow dock's Town and More, and keeps the body classes the CSS
+ * keys on. panels: every panel id. setPanel(id, open, focus): app.js's. pin(): scrolls the conversation to its newest message.
+ * Returns {plan, sync, focusAfterClose}.
+ */
+export function initPaneLayout({doc = globalThis.document, win = globalThis, panels, setPanel, pin = () => {}}) {
+  const $ = id => doc.getElementById(id);
+  const body = doc.body, chat = $('inspector-panel'), header = $('cat-header');
+  const narrowQuery = win.matchMedia(COMPACT_QUERY), twoQuery = win.matchMedia(TWO_PANES_QUERY);
+  const Observer = win.MutationObserver;
+  const isOpen = id => $(`${id}-panel`)?.hidden === false;
+  let folded = false, wasRail = false, unread = 0;
+
+  // From 900px the Inbox (the quests panel) is the top of the chat pane, under its header rows; under 900px it is a sheet again.
+  const inbox = $('quests-panel'), inboxHome = inbox?.parentElement, tabs = chat.querySelector('.tabs');
+  function placeInbox() {
+    if (!inbox || !inboxHome) return;
+    if (narrowQuery.matches) { if (inbox.parentElement !== inboxHome) inboxHome.append(inbox); }
+    else if (inbox.parentElement !== chat) chat.insertBefore(inbox, tabs);
+  }
+  placeInbox();
+
+  // The rail: one button showing the open cat's avatar (copied from the chat header) and what came for the owner since it folded.
+  const rail = doc.createElement('button'), face = doc.createElement('span'), count = doc.createElement('span');
+  rail.type = 'button';
+  rail.className = 'chat-rail-open';
+  rail.setAttribute('aria-expanded', 'false');
+  face.className = 'chat-rail-face';
+  count.className = 'chat-rail-count';
+  for (const part of [face, count]) part.setAttribute('aria-hidden', 'true');
+  count.hidden = true;
+  rail.append(face, count);
+  chat.prepend(rail);
+  rail.addEventListener('click', () => setPanel('inspector', true, true));
+  let faceKey = null;
+  function paintRail() {
+    const avatar = header?.querySelector('.avatar') ?? null, key = avatar?.outerHTML ?? '';
+    if (key !== faceKey) { faceKey = key; face.replaceChildren(...(avatar ? [avatar.cloneNode(true)] : [])); }
+    count.hidden = unread <= 0;
+    count.textContent = unread > 99 ? '99+' : String(unread);
+    rail.setAttribute('aria-label', railName(headerCat(header?.querySelector('h2')?.textContent), unread));
+  }
+  if (header && Observer) new Observer(paintRail).observe(header, {childList: true, subtree: true, characterData: true});
+  win.addEventListener('town-state', e => {
+    if (!body.classList.contains('chat-rail')) return;
+    unread += newForOwner(e.detail?.prev, e.detail?.next);
+    paintRail();
+  });
+
+  // The strip: the whole town card is one button that shows the town, captioned with the header's line: the lead (app.js draws
+  // #world-waiting, plan 11.5) and the activity line. A part the header hides (nothing waits, or Clowder is not answering) is left out.
+  const wrap = $('canvas-wrap'), activity = $('world-activity');
+  const strip = doc.createElement('button'), caption = doc.createElement('span');
+  strip.type = 'button';
+  strip.className = 'town-strip-open';
+  strip.setAttribute('aria-label', 'Show the town');
+  caption.className = 'town-strip-caption';
+  caption.id = 'town-strip-caption';
+  strip.setAttribute('aria-describedby', caption.id);
+  strip.append(caption);
+  wrap?.append(strip);
+  const shown = node => (node && !node.hidden ? node.textContent : '');
+  const mirror = () => { const text = stripCaption(shown($('world-waiting')), shown(activity)); if (caption.textContent !== text) caption.textContent = text; };
+  // The whole line is watched, so the lead is mirrored whenever app.js adds it, and either part's hidden flag too.
+  const line = activity?.parentElement;
+  if (line && Observer) new Observer(mirror).observe(line, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden']});
+  mirror();
+
+  // The narrow dock's Town and More: Town closes every sheet; More opens the list of the other panels above the dock.
+  const town = $('dock-town'), more = $('dock-more'), list = $('dock-more-menu');
+  const showTown = () => { for (const id of panels) if (isOpen(id)) setPanel(id, false); };
+  strip.addEventListener('click', () => { showTown(); town?.focus(); });
+  town?.addEventListener('click', showTown);
+  const listOpen = () => list?.classList.contains('is-open') === true;
+  const setList = open => { list?.classList.toggle('is-open', open); more?.setAttribute('aria-expanded', String(open)); };
+  more?.addEventListener('click', () => setList(!listOpen()));
+  // An item closes the list first and leaves focus on More, so its sheet or layer hands focus back there when it closes.
+  list?.addEventListener('click', e => { if (listOpen() && e.target.closest?.('button')) { setList(false); more.focus(); } }, true);
+  doc.addEventListener('keydown', e => { if (e.key === 'Escape' && listOpen()) { e.preventDefault(); e.stopPropagation(); setList(false); more.focus(); } }, true);
+  doc.addEventListener('pointerdown', e => { if (listOpen() && !list.contains(e.target) && !more.contains(e.target)) setList(false); });
+
+  const close = chat.querySelector('[data-collapse="inspector"]');
+  const dockLabel = id => $(`toggle-${id}`)?.querySelector('.dock-label')?.textContent.trim() || id;
+  function sync() {
+    const narrow = narrowQuery.matches, twoPanes = twoQuery.matches, open = panels.filter(isOpen), menu = $('town-menu');
+    // A ☰ page opened from the chat (Autonomy, Backups) sits over the thread on the right, so the chat stays.
+    const leftOpen = open.some(id => LEFT_SHEETS.includes(id)) || (menu?.open === true && menu.dataset?.over !== 'thread');
+    const isRail = chatRail({narrow, folded, leftOpen, twoPanes});
+    body.classList.toggle('town-strip', narrow && open.length > 0);
+    body.classList.toggle('chat-rail', isRail);
+    $('toggle-inspector')?.setAttribute('aria-expanded', String(narrow ? isOpen('inspector') : !isRail));
+    if (narrow && open.length === 0) town?.setAttribute('aria-current', 'true');
+    else town?.removeAttribute('aria-current');
+    const inMore = narrow ? open.find(id => list?.contains($(`toggle-${id}`))) : undefined;
+    more?.classList.toggle('has-open', !!inMore);
+    more?.setAttribute('aria-label', inMore ? `More, ${dockLabel(inMore)} open` : 'More');
+    if (!narrow && listOpen()) setList(false);
+    // From 900px the chat's close button folds it to the rail.
+    close?.setAttribute('aria-label', narrow ? 'Close chat' : 'Collapse chat');
+    close?.querySelector('use')?.setAttribute('href', narrow ? '#i-x' : '#i-chevron-right');
+    if (isRail !== wasRail) { unread = 0; if (!isRail) pin(); }
+    wasRail = isRail;
+    paintRail();
+  }
+
+  /** Records a fold or an unfold of the chat, then returns the open panels that must close for `id`. */
+  function plan(id, open) {
+    const narrow = narrowQuery.matches;
+    if (!narrow && id === 'inspector') folded = !open;
+    if (!narrow && id === 'quests' && open) folded = false;
+    return rivalsOf(id, open, {narrow, twoPanes: twoQuery.matches, isOpen, panels});
+  }
+
+  /** Where focus goes when a panel closes: the rail for the folded chat, More for a sheet whose button is in the More list. */
+  function focusAfterClose(id) {
+    if (id === 'inspector' && !narrowQuery.matches) return rail;
+    const button = $(`toggle-${id}`);
+    return narrowQuery.matches && list?.contains(button) ? more : button;
+  }
+
+  // Widening past 900px: the chat is the pane again, or its rail while a left sheet is open below 1280px. Narrowing is app.js's (it
+  // keeps one sheet). Crossing 1280px only changes whether the chat folds; going below it, a left sheet closes the Inbox.
+  narrowQuery.addEventListener('change', e => {
+    placeInbox();
+    if (e.matches) { sync(); return; }
+    if (LEFT_SHEETS.some(isOpen) && !twoQuery.matches) { setPanel('inspector', false); folded = false; sync(); }
+    else setPanel('inspector', true);
+  });
+  twoQuery.addEventListener('change', e => {
+    if (!e.matches && !narrowQuery.matches && LEFT_SHEETS.some(isOpen) && isOpen('quests')) setPanel('quests', false);
+    sync();
+  });
+  // Settings (the ☰ sheet) opens on the left from 900px, so it folds the chat below 1280px too.
+  const menu = $('town-menu');
+  if (menu && Observer) new Observer(() => sync()).observe(menu, {attributes: true, attributeFilter: ['open']});
+  paintRail();
+  return {plan, sync, focusAfterClose};
 }
 
 // The ☰ menu is a modal dialog on every width: a bottom sheet on phones, a side sheet on desktop. Focus is trapped, Escape steps back from a category page and then closes it, and focus returns to the toggle.

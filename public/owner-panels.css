@@ -3,47 +3,47 @@
    theme tokens in style.css; cards, switches, sections, messages and notes reuse the connectors panel's cx- classes. */
 .op-dialog{width:min(600px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:88dvh;margin:auto;padding:0 20px 20px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}
 .op-dialog[data-size=wide]{width:min(820px,calc(100vw - 32px))}
-.op-dialog [hidden]{display:none!important}
+:is(.op-dialog,.op-scope) [hidden]{display:none!important}
 /* The title row stays on screen while the page scrolls under it. */
-.op-dialog .op-top{position:sticky;top:0;z-index:3;gap:8px;min-height:56px;margin:0 -20px;padding:8px 12px 4px 20px;background:var(--paper)}
-.op-dialog h2{margin:2px 0 6px;font:26px/1.15 var(--font-display);overflow-wrap:anywhere}
-.op-dialog p{margin:0;font-size:14px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
-.op-dialog .op-lede{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
-.op-dialog .op-hint,.op-dialog .muted{font-size:13px;color:var(--muted)}
-.op-dialog .cx-msg{font-size:13px}
-.op-dialog .cx-warn{font-size:13px}
+:is(.op-dialog,.op-scope) .op-top{position:sticky;top:0;z-index:3;gap:8px;min-height:56px;margin:0 -20px;padding:8px 12px 4px 20px;background:var(--paper)}
+:is(.op-dialog,.op-scope) h2{margin:2px 0 6px;font:26px/1.15 var(--font-display);overflow-wrap:anywhere}
+:is(.op-dialog,.op-scope) p{margin:0;font-size:14px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+:is(.op-dialog,.op-scope) .op-lede{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--muted)}
+:is(.op-dialog,.op-scope) .op-hint,:is(.op-dialog,.op-scope) .muted{font-size:13px;color:var(--muted)}
+:is(.op-dialog,.op-scope) .cx-msg{font-size:13px}
+:is(.op-dialog,.op-scope) .cx-warn{font-size:13px}
 .op-body{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
-.op-dialog small,.op-dialog li{overflow-wrap:anywhere}
-.op-dialog .cx-section>h4{font-size:12px}
+:is(.op-dialog,.op-scope) small,:is(.op-dialog,.op-scope) li{overflow-wrap:anywhere}
+:is(.op-dialog,.op-scope) .cx-section>h4{font-size:12px}
 
 /* Buttons are the app's (style.css): 44px, --r-sm, four variants. */
-.op-dialog button{font-size:14px}
-.op-dialog .op-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.op-dialog .op-actions .op-end{margin-left:auto}
+:is(.op-dialog,.op-scope) button{font-size:14px}
+:is(.op-dialog,.op-scope) .op-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+:is(.op-dialog,.op-scope) .op-actions .op-end{margin-left:auto}
 
 /* Fields: labels above, 16px inputs so a phone does not zoom in on focus. Their look (44px, --r-sm, focus ring) is style.css's. */
-.op-dialog .op-field{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;min-width:0;margin:0;font-size:13px}
+:is(.op-dialog,.op-scope) .op-field{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;min-width:0;margin:0;font-size:13px}
 .op-field>span{font-weight:600;color:var(--ink)}
 .op-field>small{font-size:12px;line-height:1.4;color:var(--muted)}
-.op-dialog :is(input:not([type=checkbox],[type=radio],[type=range]),select,textarea){min-width:0;margin:0;font-size:16px}
-.op-dialog textarea{resize:vertical;line-height:1.45}
+:is(.op-dialog,.op-scope) :is(input:not([type=checkbox],[type=radio],[type=range]),select,textarea){min-width:0;margin:0;font-size:16px}
+:is(.op-dialog,.op-scope) textarea{resize:vertical;line-height:1.45}
 .op-form{display:grid;gap:12px;min-width:0}
 
 /* The on/off switch, its row the tap target. */
-.op-dialog label.op-switch{display:inline-flex;margin:0;font-size:14px}
+:is(.op-dialog,.op-scope) label.op-switch{display:inline-flex;margin:0;font-size:14px}
 
 /* Status line with a dot. */
-.op-dialog .op-status{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+:is(.op-dialog,.op-scope) .op-status{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
 
 /* Facts: small tiles in a row, one per line on phones. */
 .op-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0}
 .op-facts>div{min-width:0;padding:8px 10px;border:0;border-radius:var(--r-sm);background:var(--paper-2)}
-.op-facts dt{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.op-facts dt{font-size:var(--text-xs);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .op-facts dd{margin:2px 0 0;font:600 14px/1.3 var(--font-ui);color:var(--ink);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 
 /* A copy box: the value in a read-only field, Copy beside it. */
 .op-copy{display:flex;gap:8px;min-width:0}
-.op-dialog .op-copy .op-copy-input{flex:1 1 auto;width:auto;font:14px ui-monospace,Consolas,monospace}
+:is(.op-dialog,.op-scope) .op-copy .op-copy-input{flex:1 1 auto;width:auto;font:14px ui-monospace,Consolas,monospace}
 .op-copy .op-copy-button{flex-shrink:0;white-space:nowrap}
 
 /* Numbered setup steps. */
@@ -55,8 +55,8 @@
 .op-steps .cx-open{justify-self:start;margin:2px 0 0;border:1px solid var(--line);background:var(--paper);color:var(--accent)}
 
 /* A two-way choice (Google or Microsoft, this month or last). */
-.op-dialog .op-seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
-.op-dialog .op-seg button{font-size:14px}
+:is(.op-dialog,.op-scope) .op-seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+:is(.op-dialog,.op-scope) .op-seg button{font-size:14px}
 
 /* Rows: one device, one account. */
 .op-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}
@@ -70,12 +70,12 @@ details.op-more ul{margin:4px 0 0;padding-left:20px;overflow-wrap:anywhere;font:
 
 @media(max-width:600px){
   .op-dialog,.op-dialog[data-size=wide]{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px))}
-  .op-dialog .op-top{margin:0 -16px;padding:max(8px,env(safe-area-inset-top,0px)) 16px 4px}
+  :is(.op-dialog,.op-scope) .op-top{margin:0 -16px;padding:max(8px,env(safe-area-inset-top,0px)) 16px 4px}
   .op-facts{grid-template-columns:minmax(0,1fr)}
   .op-facts>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
   .op-facts dd{margin:0;text-align:right}
   .op-copy{flex-wrap:wrap}
   .op-copy .op-copy-button{flex:1 1 100%}
-  .op-dialog .op-actions>button{flex:1 1 auto}
-  .op-dialog .op-actions .op-end{margin-left:0}
+  :is(.op-dialog,.op-scope) .op-actions>button{flex:1 1 auto}
+  :is(.op-dialog,.op-scope) .op-actions .op-end{margin-left:0}
 }

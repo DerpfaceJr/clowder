@@ -236,6 +236,10 @@ test('tools are classed by the owner’s override, then annotations, then name',
   assert.equal(effectOf(none, t('create_payment')), 'money');
   assert.equal(effectOf(none, t('write_page')), 'write');
   assert.equal(effectOf(none, t('post_comment', {readOnlyHint: true})), 'read');
+  for (const name of ['sell_stock', 'trade', 'swap_tokens', 'deposit_cash', 'withdraw_funds', 'create_withdrawal']) assert.equal(effectOf(none, t(name)), 'money', name);
+  assert.equal(effectOf(none, t('sell_stock', {readOnlyHint: true})), 'money', 'no hint talks a money word out of its card');
+  assert.equal(effectOf(none, t('get_trade', {readOnlyHint: true})), 'read', 'a read verb still reads');
+  assert.equal(effectOf({effects: {sell_stock: 'read'}}, t('sell_stock')), 'read', 'the owner’s override still wins');
   assert.equal(effectOf(none, t('sync', {destructiveHint: true})), 'delete');
   assert.equal(effectOf(none, t('publish', {idempotentHint: true})), 'write');
   assert.equal(effectOf(none, t('send_note', {openWorldHint: false})), 'write');

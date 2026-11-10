@@ -4,10 +4,10 @@ import {installUiSounds} from './ui-sounds.js';
 import {diffTownState,isMayorToOwner} from './town-events.js';
 import {isIOS,isStandalone} from './mobile-ui.js';
 
-export const PREF_KINDS = Object.freeze(['approvals', 'mayor', 'seasons', 'routines']);
+export const PREF_KINDS = Object.freeze(['approvals', 'mayor', 'seasons', 'routines', 'problems']);
 export const PREF_STORAGE_KEY = 'clowder-notify';
-// approvals is the server's kind for a decision or a to-do that needs you (push.ts noticeOf).
-export const PREF_LABELS = Object.freeze({approvals: 'Decisions and to-dos', mayor: 'Messages from the Mayor', seasons: 'Season results', routines: 'Daily briefing'});
+// approvals is the server's kind for any Needs-you item (a decision, a to-do, a payment); problems for a trouble item (push.ts onStore, 11.10).
+export const PREF_LABELS = Object.freeze({approvals: 'Decisions, to-dos and payments', mayor: 'Messages from the Mayor', seasons: 'Season results', routines: 'Daily briefing', problems: 'Problems (a request failed)'});
 
 export function normalizePrefs(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -39,22 +39,46 @@ export function noticeText(value, max) {
   return chars.length > max ? chars.slice(0, Math.max(0, max - 3)).join('') + '...' : chars.join('');
 }
 
-/** The same notices the server would push, built from one town-state change. Tags and links match the server's (push.ts noticeOf), so a
- *  push and an in-app notice replace each other, and either one opens its decision's card. */
+/** The Mayor's messages to the owner in one town-state change, as the server pushes them. Needs-you items come from the list (itemNotices). */
 export function inAppNotices(diff, next, prefs) {
-  const names = new Map((next?.cats || []).map(c => [c.id, c.name]));
   const out = [];
-  if (prefs.approvals) for (const a of diff.approvals || []) out.push({kind: 'approvals', title: 'Clowder', body: `${names.get(a.cat) || a.cat} needs you: ${noticeText(a.question, 120)}`, tag: `approval-${a.id}`, url: approvalLink(a.id)});
   if (prefs.mayor) for (const m of diff.messages || []) if (isMayorToOwner(m)) out.push({kind: 'mayor', title: 'Mayor', body: noticeText(m.text, 240), tag: `mayor-${m.id}`, url: '/'});
   return out;
 }
 
-/** A notification opens its decision with this link (push.ts noticeOf builds the same one). */
+/** The link to one Inbox item (plan 11.20), as push.ts questNotice builds it. */
+export const itemLink = id => `/#item=${encodeURIComponent(String(id))}`;
+/**
+ * Notices for the Inbox list (/api/quests), diffed as the server's ListAnnouncer does (11.10): each Needs-you id, and under Problems each
+ * trouble id, once when it joins the list; one that leaves and comes back is new again. ids: the last call's ids, null for the first list,
+ * which is a baseline and gives nothing. Text, tag and link match push.ts questNotice, so a push and an in-page notice replace each other.
+ */
+export function itemNotices(ids, list, prefs) {
+  const listed = (Array.isArray(list) ? list : []).filter(q => q?.band === 'needs' || q?.band === 'trouble');
+  const notices = ids ? listed.filter(q => !ids.has(q.id) && (q.band === 'trouble' ? prefs.problems : prefs.approvals)).map(q => ({
+    kind: q.band === 'trouble' ? 'problems' : 'approvals', title: 'Clowder',
+    body: q.band === 'trouble' ? `Your request '${q.title}' failed: ${String(q.detail ?? '').replace(/[.\s]+$/, '')}. Retry?` : `Needs you: ${q.title}`,
+    tag: `item-${q.id}`, url: itemLink(q.id),
+  })) : [];
+  return {ids: new Set(listed.map(q => q.id)), notices};
+}
+
+/** The older link to a decision (before #item=). app.js opens it as the item approval:<id>. */
 export const approvalLink = id => `/#approval=${encodeURIComponent(String(id))}`;
 /** The decision a link's fragment names ("#approval=<id>"), or null. Ids are the server's: letters, digits, _ and -, as sw.js accepts. */
 export function approvalFromHash(hash) {
-  const id = new URLSearchParams(String(hash ?? '').replace(/^#/, '')).get('approval');
-  return id && /^[\w-]{1,80}$/.test(id) ? id : null;
+  const link = linkFromHash(hash);
+  return link?.kind === 'approval' ? link.id : null;
+}
+/** What a link's fragment opens (plan 8.10, 11.20): {kind:'item'|'approval'|'thread'|'cat', id} for "#item=<quest id>" (that Inbox card),
+ *  "#approval=<id>" (the older decision link), "#thread=<task>" (that request's thread) or "#cat=<id>" (that cat's chat), first match in
+ *  that order; null if none. Every id keeps the server's characters; a quest id also has ":" and "." ("approval:<id>", "owner-step:<id>"). */
+export function linkFromHash(hash) {
+  const params = new URLSearchParams(String(hash ?? '').replace(/^#/, ''));
+  const item = params.get('item');
+  if (item && /^[\w.:-]{1,200}$/.test(item)) return {kind: 'item', id: item};
+  for (const kind of ['approval', 'thread', 'cat']) { const id = params.get(kind); if (id && /^[\w-]{1,80}$/.test(id)) return {kind, id}; }
+  return null;
 }
 
 /** The Sound & notifications row subtitle, e.g. "Music 35% · notifications on". */
@@ -136,7 +160,8 @@ export function buildSoundSettings(doc, controller) {
       enable.disabled = false;
     }
   });
-  const prefBoxes = PREF_KINDS.map(kind => {
+  // Season results only while the coin economy is on (economy.enabled, off as shipped); the choice itself is kept.
+  const prefBoxes = PREF_KINDS.filter(kind => kind !== 'seasons' || controller.economy === true).map(kind => {
     const box = element(doc, 'input', {type: 'checkbox', checked: controller.prefs[kind], id: `notify-${kind}`});
     box.addEventListener('change', async () => {
       controller.setPref(kind, box.checked);
@@ -185,7 +210,8 @@ export function initSound({win = window, doc = document, nav = navigator, fetchI
   let storage = null;
   try { storage = win.localStorage; } catch { storage = null; }
   const audio = createAudio({storage, win, doc, AudioContextClass: win.AudioContext || win.webkitAudioContext});
-  const controller = {audio, win, nav, prefs: loadPrefs(storage), gesture: () => {}, setPref: null, enable: null, resubscribe: null, test: null};
+  // economy: the town's economy.enabled, from town-state; until a state arrives it is false, so Season results stays hidden.
+  const controller = {audio, win, nav, prefs: loadPrefs(storage), economy: false, gesture: () => {}, setPref: null, enable: null, resubscribe: null, test: null};
   attachUiSounds({win, doc, audio, EventSourceClass: win.EventSource});
   installUiSounds({win, doc, audio});
   let registration = null;
@@ -248,17 +274,31 @@ export function initSound({win = window, doc = document, nav = navigator, fetchI
   controller.gesture = unlock;
   for (const type of gestureEvents) win.addEventListener(type, unlock, true);
 
-  // A town-state change: sounds always, notices only while the page is hidden (a visible page already shows the change).
+  // Notices only while the page is hidden (a visible page already shows the change), and only with permission.
+  const canShow = () => doc.hidden && !!win.Notification && win.Notification.permission === 'granted';
+  const show = notices => {
+    for (const notice of notices) {
+      void ready().then(reg => reg && reg.showNotification(notice.title, {body: notice.body, tag: notice.tag, icon: '/icons/icon-192.png', data: {url: notice.url}})).catch(() => {});
+    }
+  };
+  // A town-state change: sounds always, and the Mayor's messages.
   win.addEventListener('town-state', event => {
     const {prev, next} = event.detail || {};
     if (!next) return;
+    controller.economy = next.economy?.enabled === true;
     audio.announce(prev, next);
-    if (!doc.hidden) return;
+    if (!canShow()) return;
     const diff = diffTownState(prev, next);
-    if (diff.baseline || !win.Notification || win.Notification.permission !== 'granted') return;
-    for (const notice of inAppNotices(diff, next, controller.prefs)) {
-      void ready().then(reg => reg && reg.showNotification(notice.title, {body: notice.body, tag: notice.tag, icon: '/icons/icon-192.png', data: {url: notice.url}})).catch(() => {});
-    }
+    if (!diff.baseline) show(inAppNotices(diff, next, controller.prefs));
+  });
+  // Each read of the Inbox list (app.js sends it): decisions, to-dos, payments and, under Problems, trouble, from the list the badge counts.
+  // The ids are kept while the page is visible too, so an item already seen is not announced once the page is hidden.
+  let listed = null;
+  win.addEventListener('quest-list', event => {
+    if (!Array.isArray(event.detail)) return;
+    const {ids, notices} = itemNotices(listed, event.detail, controller.prefs);
+    listed = ids;
+    if (canShow()) show(notices);
   });
 
   if (mountSettings) void mountSettingsSection(doc, controller);

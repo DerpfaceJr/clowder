@@ -123,6 +123,33 @@ test('HTML, SVG, markdown, video and images carry the sandbox CSP and nosniff, o
   await app.close();
 });
 
+test('an artifact answers a byte range, so a video can seek', async () => {
+  const dir = tempDir(), store = journal(dir);
+  const id = storeArtifact({journal: store, dir: artifactsDir(dir), cat: 'artist', task: 't', project: 't', title: 'Clip', kind: 'video', bytes: MP4}).id;
+  const app = Fastify();
+  registerArtifactRoutes(app, {dir: () => dir, events: () => store.state.events});
+  await app.ready();
+  const get = (range?: string) => app.inject({url: `/artifacts/${id}`, headers: range ? {range} : {}});
+  const whole = await get(), last = MP4.length - 1;
+  assert.equal(whole.statusCode, 200);
+  assert.equal(whole.headers['accept-ranges'], 'bytes');
+  assert.equal(Number(whole.headers['content-length']), MP4.length);
+  assert.deepEqual(whole.rawPayload, Buffer.from(MP4));
+  const cases: [string, number, number][] = [['bytes=0-3', 0, 3], ['bytes=4-', 4, last], ['bytes=-5', MP4.length - 5, last], [`bytes=2-${MP4.length + 50}`, 2, last]];
+  for (const [range, start, end] of cases) {
+    const part = await get(range);
+    assert.equal(part.statusCode, 206, range);
+    assert.equal(part.headers['content-range'], `bytes ${start}-${end}/${MP4.length}`, range);
+    assert.deepEqual(part.rawPayload, Buffer.from(MP4).subarray(start, end + 1), range);
+    assert.equal(part.headers['content-security-policy'], ARTIFACT_CSP, range);
+  }
+  const past = await get(`bytes=${MP4.length}-`);
+  assert.equal(past.statusCode, 416);
+  assert.equal(past.headers['content-range'], `bytes */${MP4.length}`);
+  assert.equal((await get('bytes=0-1,4-5')).statusCode, 200, 'a list of ranges gets the whole file');
+  await app.close();
+});
+
 test('read rules: an unpaired remote request gets 401, a paired viewer gets the page, and a LAN viewer needs the cookie', async () => {
   const dir = tempDir(), store = journal(dir);
   const id = /Saved artifact ([0-9a-f-]{36})/.exec(saveArtifactTool({journal: store, dir: artifactsDir(dir), cat: 'artist', task: 't', project: 't', args: {title: 'P', kind: 'html', content: '<p>x</p>'}}))![1];

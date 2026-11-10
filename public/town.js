@@ -5,20 +5,20 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {loadRoofKit,buildHouseLife} from './house-art.js';
-import {makeHouse,makeAnimatedCat,makePlaza,setWorldGlow,makeGarden,applyAppearance,makeMemorial,buildKitCat,setKitColours,prepareKit,applyExpression,expressionFor,kitKey,makeBench,makeNoticeBoard,makeFountain,makeFountainWater,bake,bakeCollect,bakeCopy,bakeMerge,bakedMeshes,wind,mergeRig,restBounds} from './world-art.js';
+import {SHADOW_LAYER,makeHouse,makeAnimatedCat,makePlaza,setWorldGlow,makeGarden,applyAppearance,makeMemorial,buildKitCat,setKitColours,prepareKit,applyExpression,expressionFor,kitKey,makeBench,makeNoticeBoard,makeFountain,makeFountainWater,bake,bakeCollect,bakeCopy,bakeMerge,bakedMeshes,wind,mergeRig,restBounds} from './world-art.js';
 import {resolveAppearance,planHomeMove,wantsKitBody} from './editor.js';
 import {TIMES,LIGHT_COLOURS,LIGHT_NUMBERS} from './time-of-day.js';
 import {MessageVisits,idleCat,restStep,faceYaw,turnToward,talkRule} from './world-motion.js';
-import {flagstoneTexture,buildTownGround,buildLinks,buildMagicLights,buildLamps,buildContactShadows,buildEdgeGrass,groundClock} from './town-ground.js';
+import {flagstoneTexture,buildTownGround,buildLinks,buildMagicLights,buildLamps,buildContactShadows,buildEdgeGrass,groundClock,PAW,pawUniforms} from './town-ground.js';
 import {terrain,heldGround,townHolds,findBridges,roadHeight} from './terrain.js';
 import {createMeadow,PAL as GROUND} from './meadow.js';
 import {animateCat,bindMayor,settle,footprintRadius} from './cat-animation.js';
-import {speechBubble,disposeSprite,fitBubble,BUBBLE_PX,iconTexture,iconPx,liftClear,unionBox} from './hologram.js';
-import {FAREWELL_MS,NAMEPLATE_PX,farewellText,newlyRetired,nameplate,retirementKey} from './memorial.js';
+import {speechBubble,disposeSprite,fitBubble,BUBBLE_PX,iconTexture,iconPx,liftClear,unionBox,nameplate} from './hologram.js';
+import {FAREWELL_MS,NAMEPLATE_PX,farewellText,newlyRetired,retirementKey} from './memorial.js';
 import {createConstruction} from './construction.js';
 import {createIntro} from './intro-cinematic.js';
 import {createTownPause,ARCHIVE_EVENT} from './memorial-view.js';
-import {createCameraFlight} from './camera-flight.js';
+import {createCameraFlight,easeStep} from './camera-flight.js';
 import {destroy,removeResident as dropResident,clearWorld} from './world-reset.js';
 import {demoCats} from './demo-state.js';
 import {createWeather} from './weather.js';
@@ -64,9 +64,11 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
   // Sky: a vertical gradient, the preset's horizon colour (sky) over the lower part of the screen rising to skyTop. It is
   // one screen quad at the far plane drawn after the opaque scene, so depth testing shades only the pixels where sky
   // shows (a scene.background texture shaded the whole screen every frame: about 4-6% of the frame rate, paired A/B).
+  // The quad covers only the band where the gradient leaves the horizon colour (from 38% up the screen); below it the
+  // clear colour is that same horizon, so those pixels are never shaded twice.
   // The clear colour and the fog take the horizon colour.
   const sky=new T.Mesh(new T.PlaneGeometry(2,2),new T.ShaderMaterial({uniforms:{uHorizon:{value:new T.Color()},uTop:{value:new T.Color()}},depthWrite:false,
-    vertexShader:'varying float vY;void main(){vY=position.y;gl_Position=vec4(position.xy,1.,1.);}',
+    vertexShader:'varying float vY;void main(){vY=mix(-.24,1.,position.y*.5+.5);gl_Position=vec4(position.x,vY,1.,1.);}',
     fragmentShader:'uniform vec3 uHorizon,uTop;varying float vY;void main(){float t=clamp((vY*.5+.12)/.62,0.,1.);gl_FragColor=vec4(mix(uHorizon,uTop,t*t*(3.-2.*t)),1.);\n#include <colorspace_fragment>\n}'}));
   sky.frustumCulled=false;sky.renderOrder=1e6;scene.add(sky);scene.userData.sky=sky;
   let post=null;// the Medium and High post stack (post.js); null on Low, see applyTier
@@ -86,9 +88,10 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
   const meadow=createMeadow(scene,{mobile,anisotropy:Math.min(8,renderer.capabilities.getMaxAnisotropy())});
   // Cat shadows come from one instanced soft blob per cat on layer 1, which only the sun's shadow camera sees. Skinned
   // bodies (and the 470k-triangle Mayor) never enter the shadow pass: one shadow draw for the whole town.
-  const SHADOW_LAYER=1;sun.shadow.camera.layers.enable(SHADOW_LAYER);
+  sun.shadow.camera.layers.enable(SHADOW_LAYER);
   const catShadowGeo=mergeGeometries([new T.SphereGeometry(1,10,7).scale(.55,.5,.42).translate(0,.62,0),new T.SphereGeometry(1,10,7).scale(.52,.42,.42).translate(0,1.2,.02)]);
   const catShadows=new T.InstancedMesh(catShadowGeo,new T.MeshBasicMaterial(),128);
+  const lastCatShadows=new Float32Array(128*16),lastSunOffset=new T.Vector3();let lastCatShadowCount=-1;
   catShadows.instanceMatrix.setUsage(T.DynamicDrawUsage);catShadows.layers.set(SHADOW_LAYER);catShadows.castShadow=true;catShadows.receiveShadow=false;catShadows.frustumCulled=false;catShadows.count=0;scene.add(catShadows);
   // "z z z" over every sleeping cat: one instanced billboard (three glyphs per sleeper) for the whole town, one draw.
   const SLEEP_Z=3,sleepZ=new T.InstancedMesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({transparent:true,depthWrite:false,depthTest:false}),128*SLEEP_Z),zAt=new T.Object3D(),zeroMatrix=new T.Matrix4().makeScale(0,0,0);let primeGlyph=false;
@@ -101,7 +104,7 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
   // ground.height: held terrain (level commons and plots); ground.walk adds bridge decks. Flat until the first layout.
   let ground={height:()=>0,walk:()=>0},groundTerrain=null,groundHolds=[],landings=[];
   const treasury=bakedMeshes([{baked:bake(makePlaza()),matrix:new T.Matrix4()}]);treasury.traverse(o=>o.userData.treasury=true);scene.add(treasury);
-  const treasuryLabel=document.createElement('button');treasuryLabel.className='world-label treasury-label';treasuryLabel.setAttribute('aria-label','Open town treasury');treasuryLabel.onclick=()=>onTreasury?.();labels.append(treasuryLabel);
+  const treasuryLabel=document.createElement('button');treasuryLabel.className='world-label treasury-label';treasuryLabel.setAttribute('aria-label','Open the Moonvault');treasuryLabel.onclick=()=>onTreasury?.();labels.append(treasuryLabel);
   const residents=new Map(),roads=new Map(),visits=new MessageVisits();
   let layoutModel=null,townGroup=null,hamletLabels=[];
   let snapshot,selected='mayor',mayorAsset,focusTarget,night=false,animationTime=0,catDetail=true;
@@ -311,13 +314,13 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
     const magic=buildMagicLights(layoutModel.roads,ground.walk);group.add(magic);group.userData.magic=magic;
     // Lamps along every road and by every door; none stand in the river.
     const litSpots=lampSpots.filter(p=>ground.walk(p.x,p.z)>groundTerrain.water+.6),lamps=buildLamps(litSpots,ground.walk);group.add(lamps);group.userData.pools=lamps.userData.pools;group.userData.halos=lamps.userData.halos;
-    group.add(buildEdgeGrass({sites:layoutModel.sites,roads:layoutModel.roads,yards:layoutModel.yards,homes,common:layoutModel.common,L},height,groundTerrain.water));
+    group.userData.edgeGrass=buildEdgeGrass({sites:layoutModel.sites,roads:layoutModel.roads,yards:layoutModel.yards,homes,common:layoutModel.common,L},height,groundTerrain.water);group.add(group.userData.edgeGrass);
     // Contact shadows under houses (with their gardens), plaza furniture, the vault and lamps (sizes in metres, unscaled art).
     const contact=[...residents.values()].map(r=>({x:r.group.position.x,y:r.group.position.y,z:r.group.position.z,w:5.6*L.scale,d:5*L.scale,yaw:r.yaw}));
     for(const site of layoutModel.sites)for(const f of site.features){const y=height(site.x,site.z),size={fountain:[FOUNTAIN.r*2.5,FOUNTAIN.r*2.5],bench:[1.5,.9],board:[BOARD.half*2.3,BOARD.depth*2.6]}[f.kind];if(size)contact.push({x:f.x,y,z:f.z,w:size[0],d:size[1],yaw:f.kind==='bench'?Math.atan2(-(f.x-site.x),-(f.z-site.z)):f.yaw||0});}
     contact.push({x:0,y:height(0,treasuryZ()),z:treasuryZ(),w:6.4,d:6.4},...litSpots.map(p=>({x:p.x,y:ground.walk(p.x,p.z),z:p.z,w:.9,d:.9})));
     group.add(buildContactShadows(contact));
-    townGroup=group;scene.add(townGroup);refreshMeadow();if(light)applyLight(light);markDirty();warmShaders();
+    townGroup=group;scene.add(townGroup);lowDetail();refreshMeadow();if(light)applyLight(light);markDirty();warmShaders();
     // Hamlet labels (shown only zoomed out, see the label level of detail): one per group site; a click flies there.
     for(const h of hamletLabels)h.el.remove();
     hamletLabels=layoutModel.sites.filter(s=>s.group!=='main').flatMap(s=>{
@@ -348,7 +351,7 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
     // Chimney smoke and window light for every merged house: two instanced draws for the whole town (house-art.js).
     const out=new T.Group();for(const list of pieces.values())out.add(bakedMeshes(list));out.add(water,buildHouseLife(life));return out;
   }
-  function remergeHamlets(){const old=townGroup?.userData.hamlets;if(!old)return rebuildStreets();const next=hamletMeshes([]);destroy(old);townGroup.add(next);townGroup.userData.hamlets=next;markDirty();warmShaders();}
+  function remergeHamlets(){const old=townGroup?.userData.hamlets;if(!old)return rebuildStreets();const next=hamletMeshes([]);destroy(old);townGroup.add(next);townGroup.userData.hamlets=next;lowDetail();markDirty();warmShaders();}
   // Only after the owner picks a cat (the default selection draws nothing, or the Mayor's links would star the town).
   let linkMesh=null,linksFor=null,picked=null;
   function showLinks(){
@@ -511,11 +514,16 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
   function setEditing(on){editing=!!on;if(!editing){cancelPress();endMove();editSelected=null;}hoveredBoard=null;placeBoardRing();wrap.classList.toggle('editing',editing);canvas.style.cursor=editing?'grab':'';placeEditRing();}
   // Studio camera: frameCat glides to a cat's home at zoom 3, shifted into the part of the screen the Studio leaves free (inset px
   // covered on the right for side 'left', at the bottom for 'above'). restoreCamera flies back to the view the Studio found.
-  function frameCat(id,{side='left',inset=0}={}){
+  // save:false eases there without keeping a view for restoreCamera (focus, for the chat, uses the same shift).
+  function frameCat(id,{side='left',inset=0,save=true}={}){
     const r=residents.get(id);if(!r||!viewW)return;
-    if(!studioView)studioView={position:camera.position.clone(),target:controls.target.clone(),zoom:camera.zoom};
-    const perPx=(camera.right-camera.left)/(3*viewW),axis=new T.Vector3().setFromMatrixColumn(camera.matrixWorld,side==='left'?0:1);
-    focusTarget={position:r.base.clone().add(new T.Vector3(0,1,0)).addScaledVector(axis,(side==='left'?1:-1)*inset/2*perPx),zoom:3};
+    if(save&&!studioView)studioView={position:camera.position.clone(),target:controls.target.clone(),zoom:camera.zoom};
+    aimAt(r.base,3,{side,inset});
+  }
+  // The ease's goal: 1 unit above point at zoom, moved so it lands in the middle of what inset px on the right ('left') or bottom ('above') leave.
+  function aimAt(point,zoom,{side='left',inset=0}={}){
+    const perPx=viewW?(camera.right-camera.left)/(zoom*viewW):0,axis=new T.Vector3().setFromMatrixColumn(camera.matrixWorld,side==='left'?0:1);
+    focusTarget={position:point.clone().add(new T.Vector3(0,1,0)).addScaledVector(axis,(side==='left'?1:-1)*inset/2*perPx),zoom};
   }
   function restoreCamera(){if(!studioView)return;const v=studioView;studioView=null;focusTarget=undefined;flight.flyTo({position:v.position,target:v.target,zoom:v.zoom,duration:reduced?1:900});}
   // A house's roof in CSS px from the canvas corner, for the edit toolbar. Null while the house is not drawn.
@@ -631,9 +639,18 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
   // Graphics quality: the viewer's choice (app.js passes it, see setQuality) and the tier it draws now.
   // Medium and High draw through the post stack (post.js, loaded only then); Low renders straight to the screen.
   let qualityChoice='auto',autoTier=startTier(mobile),autoCeiling='high',tier=null;
+  // Low keeps the light, the houses, the lamps and the contact shadows but leaves out the sky gradient (the clear colour is
+  // its horizon, the flat sky of before) and the edge grass, and the roof shingles cast no shadow of their own there (the
+  // hamlets' shadow stand-ins, see bakedMeshes). Low then measures under the old main, or within 3% of it while cats walk
+  // at the default view (docs/perf.md).
+  function lowDetail(){const show=tier!=='low';sky.visible=show;meadow.setDetail(show);if(townGroup?.userData.edgeGrass)townGroup.userData.edgeGrass.visible=show;
+    townGroup?.traverse(o=>{const s=o.userData.shadowStandIn;if(s){o.castShadow=show;s.visible=!show;}});}
   function applyTier(){
     const next=tierFor(qualityChoice,autoTier,mobile);if(next===tier)return;tier=next;if(window.__town)window.__town.quality=tier;
-    post?.dispose();post=null;if(light)applyLight(light);if(next==='low')return;
+    // Low draws a 1024 shadow map, as phones always do: a texel stays under a screen pixel at the default zoom, and the pass
+    // costs a quarter of the fill. Medium and High keep 2048 on computers.
+    const size=mobile||next==='low'?1024:2048;if(sun.shadow.mapSize.x!==size){sun.shadow.mapSize.set(size,size);sun.shadow.map?.dispose();sun.shadow.map=null;sun.shadow.needsUpdate=true;}
+    lowDetail();post?.dispose();post=null;if(light)applyLight(light);if(next==='low')return;
     import('./post.js').then(({createPost})=>{if(tier!==next||post)return;post=createPost(renderer,scene,camera,{tier:next,mobile});if(light)applyLight(light);warmShaders();}).catch(error=>console.warn('Post effects unavailable:',error.message));
   }
   applyTier();
@@ -647,7 +664,9 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
   function viewReach(){
     const w=(camera.right-camera.left)/2/camera.zoom,h=(camera.top-camera.bottom)/2/camera.zoom;
     const elev=Math.max(.1,Math.asin(Math.min(1,(camera.position.y-controls.target.y)/camera.position.distanceTo(controls.target))));
-    return Math.hypot(w,h/Math.sin(elev))+6+8/Math.tan(elev);
+    // The height allowance: 14 m covers a pine (about 6 m) on a hilltop (up to 8 m, terrain.js roll), so nothing pops in at the
+    // top edge. Low keeps 8 m: 14 cost Low +5% GPU at the min view (1280x800, one load toggled, 2026-11-08).
+    return Math.hypot(w,h/Math.sin(elev))+6+(tier==='low'?8:14)/Math.tan(elev);
   }
   const shadowAt=new T.Object3D(),frustum=new T.Frustum(),viewProjection=new T.Matrix4(),catSphere=new T.Sphere();let frameCount=0;
   // The Projects panel's "Show nook" glides the camera to a site (instantly with reduced motion; see focusTarget).
@@ -680,7 +699,8 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
     const p=new T.Vector3(b.x,b.y+BOARD.face,b.z).project(camera),rect=canvas.getBoundingClientRect();
     return {x:rect.left+(p.x*.5+.5)*rect.width,y:rect.top+(-p.y*.5+.5)*rect.height};
   }
-  function focus(id){const r=residents.get(id);if(r)focusTarget={position:r.catModel.position.clone().add(new T.Vector3(0,1,0)),zoom:3.2};}
+  // A chat open eases here (plan 8.10): inset px of chat pane on the right, so the cat centres in the town still showing. Never a flight.
+  function focus(id,{inset=0}={}){const r=residents.get(id);if(r)aimAt(r.catModel.position,3.2,{inset});}
   function describeVisit(v,sleepers=0){
     if(!v)return snapshot?.paused?'Town resting':!Object.keys(clips).length?'Meadow life · motion asset unavailable':sleepers?`Meadow life · ${sleepers} ${sleepers===1?'cat':'cats'} sleeping`:'Meadow life · cats at home';
     const name=id=>snapshot.cats.find(c=>c.id===id)?.name||'a neighbour',from=name(v.message.from),to=name(v.message.to);
@@ -690,17 +710,16 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
     const now=performance.now();if(document.hidden||memorialPause.paused||!viewW||!viewH||renderPaused){previousFrame=now;return;}if(mobile&&now-previousFrame<1000/30-4)return;adaptQuality(now);const dt=Math.min((now-previousFrame)/1000,settings.maxAnimationDelta);previousFrame=now;
     if(!snapshot?.paused)animationTime+=dt;
     if(intro.frame(dt))focusTarget=undefined;
-    if(flight.step())focusTarget=undefined;else if(focusTarget){const delta=focusTarget.position.clone().sub(controls.target).multiplyScalar(reduced?1:.12);controls.target.add(delta);camera.position.add(delta);camera.zoom=T.MathUtils.lerp(camera.zoom,focusTarget.zoom,reduced?1:.12);camera.updateProjectionMatrix();if(delta.length()<.01&&Math.abs(camera.zoom-focusTarget.zoom)<.01)focusTarget=undefined;}
+    if(flight.step())focusTarget=undefined;else if(focusTarget&&easeStep(camera,controls,focusTarget,dt,{reduced}))focusTarget=undefined;
     controls.update();wind.uStrength.value=reduced?0:weather.wind;groundClock.value=reduced?0:now/1000;if(meadow.update(controls.target.x,controls.target.z,camera.zoom,reduced?0:now/1000,viewReach()))markDirty();camera.updateMatrixWorld();frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));frameCount++;updateCatDetail();const relight=weather.frame(dt,{target:controls.target,camera,reach:viewReach(),light,ground:weatherGround});if(lightT<1){lightT=Math.min(1,lightT+dt/lightSeconds);light=mixLight(lightFrom,lightTo,lightT*lightT*(3-2*lightT));applyLight(light);}else if(relight&&light)applyLight(light);sun.position.copy(controls.target).add(sunOffset);sun.target.position.copy(controls.target);
-    // The shadow map redraws every other frame (walking cats at half rate), and at once whenever the view moves.
-    shadowFrame++;if(shadowFrame%2===0||!lastShadowAt.equals(controls.target)){sun.shadow.needsUpdate=true;lastShadowAt.copy(controls.target);}stars.position.set(controls.target.x,0,controls.target.z);fireflies.position.set(controls.target.x+Math.sin(animationTime*.2)*.7,ground.height(controls.target.x,controls.target.z)+Math.sin(animationTime)*.12,controls.target.z);
+    shadowFrame++;stars.position.set(controls.target.x,0,controls.target.z);fireflies.position.set(controls.target.x+Math.sin(animationTime*.2)*.7,ground.height(controls.target.x,controls.target.z)+Math.sin(animationTime)*.12,controls.target.z);
     // The next visit waits until its cats have woken (sleep wake-up runs first; see restStep).
     const paused=!!snapshot?.paused,next=visits.current?null:visits.queue[0],awake=m=>[m.from,m.to].every(id=>!(residents.get(id)?.rest.amount>0)&&!construction.busy(id));
     if(snapshot&&!paused)visits.start(snapshot.cats,layoutModel,awake,talkSpot);
     const visit=visits.advance(dt,{speed:settings.walkingSpeed,talkSeconds:settings.talkSeconds,paused,reduced});
     construction.frame({dt:paused?0:dt,time:animationTime,camera,viewH,inVisit:id=>visit?.message.from===id||visit?.message.to===id});
     let sleepers=0,zCount=0;const weatherMood=weather.mood;
-    ppm=viewH*camera.zoom/(camera.top-camera.bottom);ppy=screenBox(0,0,0).y-screenBox(0,1,0).y;iconScreen=iconPx(ppm);
+    ppm=viewH*camera.zoom/(camera.top-camera.bottom);pawUniforms.uGrow.value=Math.min(PAW.maxGrow,Math.max(1,PAW.minPx/(ppm*PAW.size)));pawUniforms.uMotion.value=reduced?0:1;ppy=screenBox(0,0,0).y-screenBox(0,1,0).y;iconScreen=iconPx(ppm);
     // The vault label rises above the vault's glowing crystal (y 2.5, radius .44) as a name label does above a hologram.
     const crystal=screenBox(0,treasury.position.y+2.5,treasuryZ(),.9*ppm,.9*ppm);
     position.set(0,treasury.position.y+3.3,treasuryZ()).project(camera);const [tx,vaultY]=toScreen(position),vaultOut=Math.abs(position.x)>1||Math.abs(position.y)>1||position.z>1;
@@ -780,6 +799,13 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
       // Zoomed out it grows (up to 2x) to stay about DEMO_GLOW_PX across, so it still reads at phone width.
       if(r.demo){shadowAt.position.y=ground.walk(shadowAt.position.x,shadowAt.position.z)+.08;shadowAt.scale.setScalar(glowScale);shadowAt.updateMatrix();demoGlow.setMatrixAt(demoCount++,shadowAt.matrix);shadowAt.scale.setScalar(1);}}
     catShadows.count=shadowCount;catShadows.instanceMatrix.clearUpdateRanges();catShadows.instanceMatrix.addUpdateRange(0,shadowCount*16);catShadows.instanceMatrix.needsUpdate=true;
+    // The shadow map redraws only when what it shows changed: at once when the view or the sun moves, every other frame
+    // while a cat's shadow blob moves (every third on Low), after a rebuild (worldDirty, see rebuild), and every
+    // 30th frame as a safety net for anything else. Everything else in it is static, so a town at rest skips the pass,
+    // about 1 ms of GPU a frame on Low (1280x800, 22 cats, MEASURED).
+    {const a=catShadows.instanceMatrix.array,len=shadowCount*16;let catsMoved=shadowCount!==lastCatShadowCount;for(let i=0;!catsMoved&&i<len;i++)catsMoved=a[i]!==lastCatShadows[i];
+      if(!lastShadowAt.equals(controls.target)||!lastSunOffset.equals(sunOffset)||(catsMoved&&shadowFrame%(tier==='low'?3:2)===0)||shadowFrame%30===0)sun.shadow.needsUpdate=true;
+      if(sun.shadow.needsUpdate){lastShadowAt.copy(controls.target);lastSunOffset.copy(sunOffset);lastCatShadows.set(a.subarray(0,len));lastCatShadowCount=shadowCount;}}
     demoGlow.count=demoCount;demoGlow.visible=demoCount>0;
     if(demoCount){demoGlow.material.opacity=reduced?1:.78+.22*Math.sin(animationTime*2.2);demoGlow.instanceMatrix.clearUpdateRanges();demoGlow.instanceMatrix.addUpdateRange(0,demoCount*16);demoGlow.instanceMatrix.needsUpdate=true;}
     updateMemorialFrame(now);
@@ -806,5 +832,5 @@ export async function createScene(onSelect,onTreasury,onMoveHome,chatNow=()=>nul
     get worldId(){return snapshot?.activeWorld?.id??null;},
     /** Graphics quality: auto, low, medium or high (quality.js). Returns the tier drawn now. */
     setQuality:name=>{if(QUALITIES.includes(name)){qualityChoice=name;if(name==='auto')autoCeiling='high';applyTier();}return tier;},
-    memorialShot,memorialScreen,archiveShot,archiveScreen,update,setView,setTimeOfDay,setWeather:name=>weather.set(name),setEditing,previewAppearance,previewHouse,replay:()=>{if(snapshot){visits.replay(snapshot.messages,snapshot.cats);}},focus:()=>focus(selected),reset:()=>{focusTarget=undefined;controls.reset();resize();},zoom:factor=>{focusTarget=undefined;camera.zoom=T.MathUtils.clamp(camera.zoom*factor,controls.minZoom,controls.maxZoom);camera.updateProjectionMatrix();},select:id=>{selected=id;picked=id;for(const [key,r] of residents)r.label.classList.toggle('selected',key===id);showLinks();focus(id);}};
+    memorialShot,memorialScreen,archiveShot,archiveScreen,update,setView,setTimeOfDay,setWeather:name=>weather.set(name),setEditing,previewAppearance,previewHouse,replay:msgs=>{if(snapshot){visits.replay(msgs??snapshot.messages,snapshot.cats);}},focus:(id=selected,o)=>focus(id,o),reset:()=>{focusTarget=undefined;controls.reset();resize();},zoom:factor=>{focusTarget=undefined;camera.zoom=T.MathUtils.clamp(camera.zoom*factor,controls.minZoom,controls.maxZoom);camera.updateProjectionMatrix();},select:(id,o)=>{selected=id;picked=id;for(const [key,r] of residents)r.label.classList.toggle('selected',key===id);showLinks();focus(id,o);}};
 }

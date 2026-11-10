@@ -1,9 +1,9 @@
 // Email to the Mayor (plan 3.11): one Gmail label on one Google account the owner signed in. Mail under the label from the owner's own
-// addresses becomes a message to the Mayor, fenced as quoted data. ☰ > Devices & AI > Email to the Mayor opens this panel. Routes
+// addresses becomes a message to the Mayor, fenced as quoted data. Post office > Channels > Email to the Mayor opens this panel. Routes
 // (src/mail-inbox.ts): GET and PUT /api/mail-watch, owner only on the main app. The Google accounts are the connectors made from a
 // directory entry whose client is google (GET /api/connectors). The pure helpers are exported for Node tests; textContent only.
 import {ago} from './quests-panel.js';
-import {devicesEntry, h, msgNode, ownerDialog, readJson, sendJson, switchControl} from './owner-dialog.js';
+import {postOfficeEntry, h, msgNode, ownerDialog, readJson, sendJson, switchControl} from './owner-dialog.js';
 
 export const DENIED = 'The owner sets up mail.';
 const list = value => (Array.isArray(value) ? value : []);
@@ -136,10 +136,10 @@ export function createMailWatchPanel({doc = document, win = globalThis.window, f
   return {open, close: () => dialog.close(), refresh, probe, dialog};
 }
 
-/** ☰ > Devices & AI > Email to the Mayor, shown once the owner route answers. */
+/** Post office > Channels > Email to the Mayor, shown once the owner route answers. */
 export function initMailWatchPanel(options = {}) {
   const doc = options.doc ?? document, panel = createMailWatchPanel(options);
-  const entry = devicesEntry(doc, {id: 'mail-watch-open', text: 'Email to the Mayor', note: 'Mail under one Gmail label goes to the Mayor', open: panel.open});
+  const entry = postOfficeEntry(doc, {id: 'mail-watch-open', group: 'channels', text: 'Email to the Mayor', note: 'Mail under one Gmail label goes to the Mayor', open: panel.open});
   void panel.probe().then(ok => { if (entry) entry.hidden = !ok; });
   return panel;
 }

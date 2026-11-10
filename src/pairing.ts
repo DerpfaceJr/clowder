@@ -4,9 +4,13 @@ import {dirname} from 'node:path';
 import {ALGORITHMS,type Passkey} from './webauthn.ts';
 
 export type RemoteConfig={pairingTtlMs:number;deviceTtlMs:number;maxDevices:number;attemptWindowMs:number;maxPairAttempts:number;pollMs:number;tunnelTimeoutMs:number};
-export type Role='owner'|'viewer';
-// passkey: the owner device's step-up passkey (plan 5.5), bound to the stable address it was added on.
-export type Device={id:string;name:string;permission:Role;tokenHash:string;createdAt:number;expiresAt:number;followAt?:number;passkey?:Passkey};
+// member (plan 10.3, D18): a person the owner let into a shared world. A member device reaches the member routes alone (the member gate, plan 10.5,
+// access.ts); every other gate grants on permission==='owner', never on permission!=='viewer'.
+export type Role='owner'|'member'|'viewer';
+// The owner's person id (people.ts). Devices from before people existed are the owner's.
+export const OWNER='owner';
+// passkey: an owner or member device's passkey (plans 5.5, 10.4), bound to the stable address it was added on. Only an owner's opens a step-up.
+export type Device={id:string;name:string;permission:Role;person:string;tokenHash:string;createdAt:number;expiresAt:number;followAt?:number;passkey?:Passkey};
 export type Listed=Omit<Device,'tokenHash'|'passkey'>&{passkey?:{rpId:string;createdAt:number}};
 const DAY_MS=24*60*60*1000,HOUR_MS=60*60*1000;
 // The slots of the chat channels (chat-channel.ts): their codes pair only through that channel.
@@ -21,10 +25,13 @@ const passkeyOk=(k:any)=>!!k&&typeof k==='object'&&typeof k.id==='string'&&/^[A-
 export class Pairing {
   private devices:Device[]=[];
   // One open code per slot: a new remote code replaces the last remote one, and the LAN viewing link has its own slot.
-  private invites=new Map<string,{hash:string;permission:Role;expiresAt:number}>();
+  private invites=new Map<string,{hash:string;permission:Role;person:string;expiresAt:number}>();
   private attempts:number[]=[];
   // Revoking a device also removes what it owns elsewhere (its push endpoints, server.ts).
   readonly revoked=new Set<(id:string)=>void>();
+  // Whether a person may still pair a device (people.ts sets it), asked when a code is made and again when it is used (plan 10.4).
+  // Without People only the owner's codes pair: the timid default.
+  personActive:(person:string)=>boolean=person=>person===OWNER;
   constructor(private file:string,readonly config:RemoteConfig,private now=Date.now){
     const keys:(keyof RemoteConfig)[]=['pairingTtlMs','deviceTtlMs','maxDevices','attemptWindowMs','maxPairAttempts','pollMs','tunnelTimeoutMs'];
     if(!config||keys.some(key=>!Number.isSafeInteger(config[key])||config[key]<=0))throw new Error('Remote access requires positive integer limits in town.config.json.');
@@ -32,12 +39,14 @@ export class Pairing {
       const data=JSON.parse(readFileSync(file,'utf8'));
       const legacy=Array.isArray(data)?data.filter(d=>LEGACY.has(d?.permission)):[];
       for(const d of legacy)d.permission=LEGACY.get(d.permission);
-      if(!Array.isArray(data)||data.some(d=>!d||typeof d.id!=='string'||typeof d.name!=='string'||!['owner','viewer'].includes(d.permission)||!/^[a-f0-9]{64}$/.test(d.tokenHash)||!Number.isFinite(d.createdAt)||!Number.isFinite(d.expiresAt)||(d.followAt!==undefined&&!Number.isFinite(d.followAt))))throw new Error('Invalid paired-device store.');
-      const dropped=data.filter(d=>d.passkey!==undefined&&(d.permission!=='owner'||!passkeyOk(d.passkey)));
+      if(!Array.isArray(data)||data.some(d=>!d||typeof d.id!=='string'||typeof d.name!=='string'||!['owner','member','viewer'].includes(d.permission)||(d.person!==undefined&&(typeof d.person!=='string'||!d.person))||!/^[a-f0-9]{64}$/.test(d.tokenHash)||!Number.isFinite(d.createdAt)||!Number.isFinite(d.expiresAt)||(d.followAt!==undefined&&!Number.isFinite(d.followAt))))throw new Error('Invalid paired-device store.');
+      const ownerless=data.filter(d=>d.person===undefined);
+      for(const d of ownerless)d.person=OWNER;
+      const dropped=data.filter(d=>d.passkey!==undefined&&(d.permission==='viewer'||!passkeyOk(d.passkey)));
       for(const d of dropped)delete d.passkey;
       this.devices=data;
-      // Saved only when something was renamed or dropped, so a second load writes nothing.
-      if(legacy.length||dropped.length)this.save(data);
+      // Saved only when something was renamed, given its owner or dropped, so a second load writes nothing.
+      if(legacy.length||ownerless.length||dropped.length)this.save(data);
     }
   }
   private save(devices:Device[]){
@@ -47,11 +56,14 @@ export class Pairing {
   }
   // A passkey is listed by where it works and when it was added; its key stays in the store.
   list():Listed[]{return this.devices.filter(d=>d.expiresAt>this.now()).map(({tokenHash,passkey,...d})=>passkey?{...d,passkey:{rpId:passkey.rpId,createdAt:passkey.createdAt}}:d);}
-  create(permission:Role,slot='remote'){
+  // person: whose device the code pairs (people.ts). Control is the owner's alone.
+  create(permission:Role,slot='remote',person=OWNER){
+    if(permission==='owner'&&person!==OWNER)throw new Error('Only the owner pairs a device with control.');
+    if(!this.personActive(person))throw Object.assign(new Error('No such person.'),{statusCode:404});
     if(this.list().length>=this.config.maxDevices)throw new Error('Remove an old device before pairing another.');
     const code=randomBytes(8).toString('hex').toUpperCase();
     const expiresAt=this.now()+this.config.pairingTtlMs;
-    this.invites.set(slot,{hash:codeKey(code),permission,expiresAt});
+    this.invites.set(slot,{hash:codeKey(code),permission,person,expiresAt});
     return {code:code.match(/.{4}/g)!.join('-'),permission,expiresAt};
   }
   // Stopping the tunnel ends its open code; the LAN viewing link is not the tunnel's.
@@ -63,13 +75,14 @@ export class Pairing {
     if(this.attempts.length>=this.config.maxPairAttempts)throw Object.assign(new Error('Too many attempts. Wait and try again.'),{statusCode:429});
     this.attempts.push(now);
     const open=[...this.invites].find(([s,i])=>(only===undefined?!CHAT_SLOTS.has(s):s===only)&&i.expiresAt>now&&i.hash===codeKey(code));
-    if(!open)throw Object.assign(new Error('Pairing code expired, used or incorrect.'),{statusCode:401});
+    // A removed person's code answers as a wrong one does.
+    if(!open||!this.personActive(open[1].person))throw Object.assign(new Error('Pairing code expired, used or incorrect.'),{statusCode:401});
     const [slot,invite]=open;
     if(typeof name==='function')name=name(invite.permission);
     if(!name.trim())throw new Error('Name this device.');
     if(this.list().length>=this.config.maxDevices)throw new Error('Device limit reached.');
     const token=randomBytes(32).toString('hex');
-    const device:Device={id:randomUUID(),name:name.trim().slice(0,60),permission:invite.permission,tokenHash:hash(token),createdAt:now,expiresAt:now+this.config.deviceTtlMs};
+    const device:Device={id:randomUUID(),name:name.trim().slice(0,60),permission:invite.permission,person:invite.person,tokenHash:hash(token),createdAt:now,expiresAt:now+this.config.deviceTtlMs};
     this.save([...this.devices.filter(d=>d.expiresAt>now),device]);this.invites.delete(slot);
     return {token,device};
   }
@@ -88,12 +101,18 @@ export class Pairing {
     device.followAt=now;this.save(this.devices);
   }
   revoke(id:string){this.save(this.devices.filter(d=>d.id!==id));for(const removed of this.revoked)removed(id);}
-  // The step-up passkey (plan 5.5): owner devices only. The counter is saved after each confirm, so a copied key shows as a counter going back.
+  // A removed person (people.ts): every device of theirs goes through revoke, so its hooks run, and their open code with them.
+  revokePerson(person:string){
+    for(const d of this.devices.filter(d=>d.person===person))this.revoke(d.id);
+    for(const [slot,invite] of this.invites)if(invite.person===person)this.invites.delete(slot);
+  }
+  // The passkey (plan 5.5): owner devices, and member devices on a stable address (plan 10.4), never viewers. The counter is saved after each
+  // confirm, so a copied key shows as a counter going back.
   passkey(id:string){return this.devices.find(d=>d.id===id&&d.expiresAt>this.now())?.passkey;}
   setPasskey(id:string,passkey:Passkey|undefined){
     const device=this.devices.find(d=>d.id===id&&d.expiresAt>this.now());
     if(!device)throw Object.assign(new Error('That device is no longer paired.'),{statusCode:404});
-    if(passkey&&device.permission!=='owner')throw Object.assign(new Error('Only a device paired with control can have a passkey.'),{statusCode:403});
+    if(passkey&&device.permission==='viewer')throw Object.assign(new Error('Only a device paired with control or as a member can have a passkey.'),{statusCode:403});
     if(passkey)device.passkey=passkey;else delete device.passkey;
     this.save(this.devices);
   }

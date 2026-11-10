@@ -94,6 +94,11 @@ test('idle: restart now stops the server before installing; at next quit install
   assert.deepEqual(calls, ['ask', 'stop:true', 'install:true:false']);
 });
 
+test('main.cjs: Restart now stops the team servers before the private one, so the installer never starts while one runs', () => {
+  const main = readFileSync(join(root, 'desktop', 'main.cjs'), 'utf8');
+  assert.ok(main.includes('stopServer: async (o) => { await stopTeams(); await stopServer(o); },'));
+});
+
 test('the updater stays off unless the build is a release whose app-update.yml names a publisher', () => {
   const {updaterOff, NOT_RELEASE} = require('../desktop/update-gate.cjs');
   assert.equal(updaterOff(null, null), NOT_RELEASE);

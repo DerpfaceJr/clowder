@@ -7,7 +7,7 @@ import {
 } from '../public/connectors-panel.js';
 import {slashMatches, stepIndex} from '../public/slash-commands.js';
 
-const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 test('the status label names the state, and a disabled connector reads Off whatever the server last saw', () => {
   assert.deepEqual(statusLabel({status: 'connected', tools: new Array(12).fill({})}), {tone: 'ok', label: 'Connected · 12 tools'});
@@ -162,8 +162,8 @@ test('arrow keys wrap through the list', () => {
   assert.equal(stepIndex(0, 1, 0), 0);
 });
 
-test('the connectors button sits right after AI models, owner and host only, and the approval sheet has the detail block', () => {
-  assert.match(html, /<button id="models-open"[^>]*>AI models<\/button><button id="connectors-open" data-owner data-host hidden aria-haspopup="dialog" data-note="Connect apps and add plugins for your cats">Connectors &amp; plugins<\/button>/);
+test('the connectors button is the Post office’s Apps, owner and host only, and the approval sheet has the detail block', () => {
+  assert.match(html, /<section class="po-group" data-group="apps"[^>]*>(?:(?!<\/section>)[\s\S])*<div class="menu-items po-items" data-items="apps"><button id="connectors-open" data-owner data-host hidden aria-haspopup="dialog" data-note="Connect apps and add plugins for your cats">Connectors &amp; plugins<\/button><\/div><\/section>/);
   assert.match(html, /<dialog id="connectors-panel"[^>]*>[\s\S]*?<div id="connectors-body"/);
   assert.ok(html.includes('<details id="approval-detail" class="approval-detail" hidden>'));
   assert.ok(html.includes('<link rel="stylesheet" href="/connectors-panel.css">'));

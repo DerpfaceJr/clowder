@@ -89,7 +89,7 @@ function newCard() {
       el('button', {type: 'button', class: 'world-new-button', onclick: () => { creating = true; paint(true); }},
         el('span', {class: 'world-new-plus', 'aria-hidden': 'true'}, icon('plus', {size: 28})),
         el('strong', {text: 'New world'}),
-        el('span', {class: 'world-new-note', text: 'A fresh town with its own cats, history and coins.'})));
+        el('span', {class: 'world-new-note', text: 'A fresh town with its own cats and history.'})));
   }
   const input = el('input', {type: 'text', maxlength: 40, required: true, autocomplete: 'off', placeholder: 'Name for a new world', 'aria-label': 'Name for a new world'});
   const defaults = newWorldDefaults();
@@ -287,7 +287,7 @@ function openDelete(world) {
       await call(`/${encodeURIComponent(world.id)}/delete`, {});
       deleteDialog.close();
       await refreshList();
-      showStatus(`Deleted ${world.name}. Its cats, history and coins are gone.`);
+      showStatus(`Deleted ${world.name}. Its cats and history are gone.`);
     } catch (err) {
       remove.textContent = 'Delete forever';
       remove.disabled = !canDelete(input.value, world.name);
@@ -297,7 +297,7 @@ function openDelete(world) {
     }
   }}, el('span', {class: 'eyebrow', text: 'PERMANENT'}),
     el('h2', {id: 'worlds-delete-title', text: `Delete ${world.name} forever?`}),
-    el('p', {text: `This permanently removes ${world.name}'s cats, history and coins. It cannot be undone.`}),
+    el('p', {text: `This permanently removes ${world.name}'s cats and history. It cannot be undone.`}),
     el('label', {}, el('span', {text: `Type ${world.name} to confirm`}), input),
     error,
     el('div', {class: 'dialog-actions confirm-actions'}, cancel, remove));
@@ -327,7 +327,7 @@ function buildDialog() {
       back,
       el('div', {}, el('span', {class: 'eyebrow', text: 'YOUR TOWNS'}), el('h2', {id: 'worlds-title', text: 'Worlds'})),
       close),
-    el('p', {class: 'worlds-intro', text: 'Each world is its own town, with its own cats, history and coins. Visit one to make it the town you see.'}),
+    el('p', {class: 'worlds-intro', text: 'Each world is its own town, with its own cats and history. Visit one to make it the town you see.'}),
     el('div', {class: 'worlds-filter', role: 'group', 'aria-label': 'Show worlds'}, filter('active'), filter('archived')),
     status,
     grid);

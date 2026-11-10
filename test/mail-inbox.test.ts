@@ -84,6 +84,7 @@ test('a fixture message reaches the Mayor inbox once, even across a restart and 
     t.g.add('fixture-1', OWNER, 'Report', 'Please file the report.');
     await t.mail.poll();
     assert.equal(t.inbox().length, 1);
+    assert.ok(t.desk.store.state.messages.some(m => m.from === 'mailman' && m.to === 'mayor' && m.text === 'Post for you, by email.'), 'the Mailman delivers it');
     assert.equal(t.mail.status().taken, 1);
     assert.deepEqual(t.g.modified, ['fixture-1'], 'the message is marked read');
     // A crash after the inbox took it but before the cursor was saved: Gmail replays the same history to the next watcher.

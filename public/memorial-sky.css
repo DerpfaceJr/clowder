@@ -6,10 +6,13 @@
    zoom-reveal: the sky opens from the telescope lens (--mx, --my) outward, fading and settling from a slight scale.
    zoom-fade: the plain crossfade (reduced motion, or no 3D scene). zoom-leave: the sky fades back to the town. */
 @property --memorial-reveal{syntax:'<percentage>';inherits:false;initial-value:150%}
-.memorial-view:is(.zoom-reveal,.zoom-fade,.zoom-leave)::backdrop{background:transparent;backdrop-filter:none}
+.memorial-view:is(.zoom-reveal,.zoom-fade,.zoom-quick,.zoom-leave,.zoom-quick-leave)::backdrop{background:transparent;backdrop-filter:none}
 .memorial-view.zoom-reveal{transform-origin:var(--mx,50%) var(--my,50%);-webkit-mask-image:radial-gradient(circle at var(--mx,50%) var(--my,50%),#000 calc(var(--memorial-reveal) - 30%),transparent var(--memorial-reveal));mask-image:radial-gradient(circle at var(--mx,50%) var(--my,50%),#000 calc(var(--memorial-reveal) - 30%),transparent var(--memorial-reveal));animation:memorial-reveal .5s cubic-bezier(.3,0,.2,1) both}
 .memorial-view.zoom-fade{animation:memorial-in .25s ease-out both}
 .memorial-view.zoom-leave{animation:memorial-in .35s ease-in reverse both}
+/* zoom-quick, zoom-quick-leave: a layer opened from the chat (an artifact link) crossfades in --dur-quick each way, no flight (plan 8.10). */
+.memorial-view.zoom-quick{animation:memorial-in var(--dur-quick) var(--ease-out) both}
+.memorial-view.zoom-quick-leave{animation:memorial-in var(--dur-quick) var(--ease-out) reverse both}
 @keyframes memorial-in{from{opacity:0}to{opacity:1}}
 @keyframes memorial-reveal{from{--memorial-reveal:0%;opacity:.35;transform:scale(1.12)}to{--memorial-reveal:160%;opacity:1;transform:none}}
 /* The page chrome steps aside for the flight and comes back as the camera returns. */

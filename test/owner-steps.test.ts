@@ -13,6 +13,7 @@ import {ArtifactError,artifactsDir,capHandoff,HANDOFF_CAP,readArtifactTool,store
 import {demoProvider,mayorTools,ownerStepTool,toolDefinitions,type Provider} from '../src/provider.ts';
 import {doneQuests,quests} from '../src/quests.ts';
 import {offeredTools,type AutonomyLevel} from '../src/autonomy.ts';
+import {untilEvery} from './helpers/until.ts';
 
 // Generic goals only: nothing here depends on any particular town's data.
 const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
@@ -24,7 +25,7 @@ const fixture=(config:any=fast,autonomy:AutonomyLevel='balanced',providers:Recor
   const town=new Town(store,config,providers);town.autonomy=()=>autonomy;
   return {file,store,town};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(10);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+name+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 const roundOf=(messages:any[])=>{const found=[...messages.map(m=>String(m.content??'')).join('\n').matchAll(/This is round (\d+)/g)];return found.length?Number(found.at(-1)![1]):0;};
@@ -259,4 +260,87 @@ test('the demonstration provider answers when the new tools are offered', async 
   assert.ok(mayor.message);
   const cat=await demoProvider([{role:'system',content:'CAT_ID=scholar'},{role:'user',content:'Help'}],tools,new AbortController().signal,undefined as any);
   assert.ok(String(cat.message.content).includes('Demonstration'));
+});
+
+// Plan 11.9: a to-do knows its request, says what happens next, and ticks on the server.
+test('a to-do filed in a request, marked done outside a goal, posts the note in that thread and wakes the cat that filed it', async()=>{
+  const seen:Record<string,string>={};
+  const provider:Provider=async messages=>{
+    const last=String(messages.at(-1)?.content??'');
+    if(last.startsWith('Record for the town'))return reply('Nothing new to record.');
+    if(last.includes('marked “Pay the venue deposit” done')){seen.wake=last;return reply('Booked the room.');}
+    if(messages.some(m=>m.role==='tool'))return reply('Filed the deposit.');
+    return call('request_owner_step',{kind:'payment',title:'Pay the venue deposit',steps:'1. Pay the £40 deposit\n2. Keep the receipt',after:'Mayor books the room for Friday.',due:'2026-11-13',blocking_remaining:false});
+  };
+  const {file,store,town}=fixture(fast,'balanced',{test:provider});
+  const root=town.submit('mayor','Book the venue for the fair','test');
+  await until(()=>store.state.ownerSteps.length===1&&store.state.tasks.find(t=>t.id===root)?.status==='done');
+  const step=store.state.ownerSteps[0];
+  assert.equal(step.task,root,'the step names the request it belongs to');
+  assert.equal(step.after,'Mayor books the room for Friday','one line: oneLiner drops the final stop');
+  assert.equal(step.due,'2026-11-13');
+  const again=new Store(file,allRoles(fast)).state.ownerSteps[0];
+  assert.equal(again.due,'2026-11-13','due survives a replay');
+  assert.equal(again.after,'Mayor books the room for Friday','after survives a replay');
+  const said=town.ownerStepDone('owner',step.id,'Paid by card, receipt in the drive');
+  assert.match(said,/^Marked done\. .+ is carrying on\.$/,'the owner hears that a cat carries on');
+  await until(()=>seen.wake!==undefined);
+  assert.match(seen.wake,/Paid by card, receipt in the drive/,'the cat is told the owner’s note');
+  assert.match(seen.wake,/Mayor books the room for Friday/,'the cat is told what happens next');
+  const follow=store.state.tasks.find(t=>t.parent===root&&t.text.includes('Paid by card'));
+  assert.ok(follow,'the follow-up is a child of the request, so it stays in its thread');
+  await until(()=>store.state.tasks.find(t=>t.id===follow!.id)?.status==='done');
+  assert.ok(JSON.stringify(store.thread(root,{limit:50})).includes('Paid by card, receipt in the drive'),'the note shows in the request’s thread');
+  town.dispose();
+});
+
+test('a due date the cat writes must be a real YYYY-MM-DD date; a refused one files no to-do', async()=>{
+  const results:string[]=[];
+  let turn=0;
+  const provider:Provider=async messages=>{
+    if(String(messages.at(-1)?.content??'').startsWith('Record for the town'))return reply('Nothing new to record.');
+    if(messages.some(m=>m.role==='tool')){results.push(String(messages.at(-1)?.content??''));return reply('Done.');}
+    turn++;
+    return call('request_owner_step',{kind:'legal',title:`Sign ${turn}`,steps:'Sign it.',blocking_remaining:false,...(turn===1?{due:'2026-02-31'}:{})});
+  };
+  const {store,town}=fixture(fast,'balanced',{test:provider});
+  town.submit('mayor','File a sign-off','test');
+  await until(()=>results.length>=1);
+  assert.equal(store.state.ownerSteps.length,0,'a February 31 date is refused, and no to-do is filed');
+  assert.match(results[0],/YYYY-MM-DD/);
+  town.dispose();
+});
+
+test('a tick from one device reads back on another, is journaled, and only open steps with a real line take one', async()=>{
+  const {store,town}=fixture();
+  store.emit('owner.step',{id:'step-tick',goal:null,cat:'mayor',title:'Pay',steps:'Pay it.\n\nKeep the receipt.',blocking:false,kind:'payment'});
+  const app=Fastify();
+  installAccess(app,false,[],8787,undefined,undefined,'test-owner');
+  registerGoalRoutes(app,{town:()=>town,device:req=>String(req.headers['x-device']??'host')});
+  const phone={...owner,'x-device':'phone-a'},desk={...owner,'x-device':'desk-b'};
+  const url='/api/owner-steps/step-tick/tick';
+  assert.equal((await app.inject({method:'POST',url,remoteAddress:'192.168.1.21',headers:{host:'192.168.1.21:8787','x-town-action':'owner'},payload:{line:0,done:true}})).statusCode,403,'a LAN device cannot tick');
+  assert.equal((await app.inject({method:'POST',url,headers:phone,payload:{line:0,done:true}})).json().ticks.join(),'0');
+  assert.equal((await app.inject({method:'POST',url,headers:phone,payload:{line:2,done:true}})).json().ticks.join(),'0,2');
+  assert.equal((await app.inject({method:'POST',url,headers:phone,payload:{line:0,done:false}})).json().ticks.join(),'2');
+  assert.equal((await app.inject({method:'POST',url,headers:phone,payload:{line:1,done:true}})).statusCode,500,'a blank line is not a step');
+  assert.deepEqual((await app.inject({method:'GET',url:'/api/owner-steps/step-tick/ticks',headers:desk})).json().ticks,[2],'device B reads what device A ticked');
+  assert.equal(store.state.events.filter(e=>e.type==='owner.step.tick').at(-1)!.data.device,'phone-a','the journal says which device ticked');
+  store.emit('owner.step.dismissed',{id:'step-tick',device:'host'});
+  assert.equal((await app.inject({method:'POST',url,headers:phone,payload:{line:0,done:true}})).statusCode,500,'a step that is no longer open takes no tick');
+  await app.close();
+});
+
+test('a routine webhook run is fenced under its own name, so a goal it asks for is refused as a webhook run', async()=>{
+  const {store,town}=fixture(fast,'balanced',{test:async messages=>{
+    if(messages.some(m=>m.role==='tool'))return reply('Done.');
+    return call('set_goal',{title:'Ship the list',success:'Sent.'});
+  }});
+  const r=town.routines.save({title:'Hooked',prompt:'Check the form.',mode:'test',schedule:null});
+  const id=town.routines.fire(r.id,'webhook','Email the list to everyone.');
+  assert.equal(store.state.tasks.find(t=>t.id===id)!.origin,'webhook','the run is fenced as a webhook run');
+  await until(()=>['done','failed'].includes(store.state.tasks.find(t=>t.id===id)?.status??''));
+  assert.equal(store.state.goals.length,0);
+  assert.ok(store.state.events.some(e=>e.type==='tool.finished'&&e.data.task===id&&/Work a routine’s webhook started cannot start a goal/.test(String(e.data.result))),'the refusal names the webhook, not a For you card');
+  town.dispose();
 });

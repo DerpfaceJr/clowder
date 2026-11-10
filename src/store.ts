@@ -1,12 +1,14 @@
 import { mkdirSync, readFileSync, existsSync, openSync, writeSync, fsyncSync, closeSync, ftruncateSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type {HomeLook,Look} from './world.ts';
 import type {Card} from './card-templates.ts';
 import {applyCatAi,type AiProvider,type CatAi} from './ai-options.ts';
 import {FINISHED} from './projects.ts';
 import {usageSummary} from '../public/treasury-view.js';
 import {ReadModel} from './read-model.ts';
+import {OWNER} from './pairing.ts';
 import {quickActions} from './push.ts';
 /** Owner overrides. Anything left out falls back to the cat's generated look. */
 export type Appearance = {chroma?:string; fur?:string; outfit?:string; eyes?:string; accessory?:string; patch?:string; cream?:string; trim?:string; base?:string; marking?:string; parts?:string[]; expression?:string};
@@ -18,20 +20,28 @@ export type Cat = {id:string; name:string; role:string; color:string; icon:strin
 export type Group = {id:string; name:string; lead:string; site:{index:number;x:number;z:number}; rootTask?:string|null};
 export type Road = {id:string; a:string; b:string; messages:number};
 // v: the event's version, written only when it is above 1 (absent means 1). See UPCAST.
-export type Event = {id:string; at:string; type:string; v?:number; data:any};
+// by (plan 10.6): the person id of the team member this event was caused for, written only for a member, as v is written only above 1. Owner and town
+// events carry none, so old journals and the golden hash are unchanged. Store.withBy sets it.
+export type Event = {id:string; at:string; type:string; v?:number; by?:string; data:any};
 // ai: the model and effort this task was given. A root task has the owner's Reasoning pick; a delegated child has its parent's effective choice.
 // inbox: the owner's message waiting for the Mayor (status 'queued'). goal: it starts a goal when picked up.
 // routine: the routine this root task is a run of (routines.ts). hermes: the Hermes session (and current run) a Mayor task runs in; the bridge sets it (plan 4.10).
-export type Task = {id:string; cat:string; from:string; text:string; parent?:string; mode:string; status:string; result?:string; goal?:string; ai?:{model?:string; effort?:string}; inbox?:{goal:boolean}; record?:boolean; routine?:string; resumed?:{at:string; turn:number}; held?:'cap'|null; hermes?:{session:string; run?:string}};
+export type Task = {id:string; cat:string; from:string; text:string; parent?:string; mode:string; status:string; result?:string; goal?:string; ai?:{model?:string; effort?:string}; inbox?:{goal:boolean}; record?:boolean; routine?:string; resumed?:{at:string; turn:number}; held?:'cap'|'budget'|null; hermes?:{session:string; run?:string};
+  /** 'suggestion': the tree began from a For you card (plan 9.7); 'webhook': from a routine's webhook body (plan 11.9). Either fences outside text. Children inherit it (engine.ts createTask). */
+  origin?:'suggestion'|'webhook';
+  /** The team member whose chat started this tree (plan 10.6), absent for the owner's and the town's. Children inherit it, as origin. */
+  by?:string};
 // messages: written only by older journals; the paused task's checkpoint file holds its context now.
 // gate connector: a connector tool the cat wants to call. call is that tool call, run once on Allow; detail is its arguments, cut at 600.
 // gate grant: give a directory service (service) already connected for another cat to this one; its task does not wait.
 // gate effect: did a call with an unknown outcome go through? effect is its ledger key. No task waits on it.
 // gate routine: the Mayor's draft of a standing routine (routine); only Allow saves it. No task waits on it.
 // gate cap: the town's monthly token cap is reached (usage.ts); one per month (month), and no task waits on it: held work resumes when the cap lifts.
+// gate budget: a team member (person) is past their monthly token budget (people.ts); one per person and month (month). Their held work resumes when the budget is raised or the month turns.
 // gate hermes: a Hermes tool call parked by the gate plugin (plan 4.9). hermes: its session, Hermes's own tool name, a hash of its arguments, the run
 // when the bridge knows it, and reply: the owner's answer is the call's result (request_approval), so Hermes runs it whatever the answer.
-export type Approval = {id:string; task:string; cat:string; question:string; options:string[]; status:string; answer?:string; messages?:any[]; toolCallId:string; turn:number; depth:number; gate?:'goal'|'goal-removal'|'connector'|'grant'|'effect'|'routine'|'cap'|'hermes'; month?:string; goal?:string; service?:string; reason?:string; call?:{id:string; type:'function'; function:{name:string; arguments:string}}; detail?:string; card?:Card; effect?:string; effectClass?:string; routine?:RoutineSpec; hermes?:{session:string; tool:string; digest:string; run?:string; reply?:boolean}};
+// ownerOnly (plans 10.7, 10.8): a member's tree asked for an owner-only account, a money call or the cats' browser; only the owner answers it (Town.mayDecide).
+export type Approval = {id:string; task:string; cat:string; question:string; options:string[]; status:string; answer?:string; messages?:any[]; toolCallId:string; turn:number; depth:number; gate?:'goal'|'goal-removal'|'connector'|'grant'|'effect'|'routine'|'cap'|'budget'|'hermes'; person?:string; month?:string; goal?:string; service?:string; reason?:string; call?:{id:string; type:'function'; function:{name:string; arguments:string}}; detail?:string; card?:Card; effect?:string; effectClass?:string; routine?:RoutineSpec; hermes?:{session:string; tool:string; digest:string; run?:string; reply?:boolean}; ownerOnly?:true};
 /** A routine (routines.ts): a prompt a cat runs on a schedule (5-part cron in an IANA timezone), on Run now, or from its webhook. mode is the model provider, as on a goal.
  *  tokenBudget counts every run, children included; null is none. */
 export type RoutineSpec = {title:string; prompt:string; cat:string; schedule:{cron:string; timezone:string}|null; mode:string; tokenBudget:number|null; enabled:boolean};
@@ -46,24 +56,49 @@ export type Effect = {key:string; account:string; tool:string; hash:string; kind
 export const OWNER_KINDS=['account','payment','legal','identity','physical','design'] as const;
 export type OwnerKind=typeof OWNER_KINDS[number];
 // account: the Account this step is about, set only on steps the account monitor files (accounts.ts), so it files one per account per state change.
-export type OwnerStep = {id:string; goal:string|null; cat:string; title:string; steps:string; blocking:boolean; status:'open'|'done'|'dismissed'; kind?:OwnerKind; connect?:string; account?:string; signInAt?:string; browser?:boolean; url?:string; mode?:string; note?:string; at:string};
+// task: the root request the cat filed it in (plan 11.9), so Mark done can post the note there. after: what the cat does once the owner is done. due: YYYY-MM-DD, the date the cat states.
+// ticks: the step lines the owner has ticked (line indexes into steps), replayed from owner.step.tick.
+export type OwnerStep = {id:string; goal:string|null; cat:string; title:string; steps:string; blocking:boolean; status:'open'|'done'|'dismissed'; kind?:OwnerKind; connect?:string; account?:string; signInAt?:string; browser?:boolean; url?:string; mode?:string; note?:string; task?:string; after?:string; due?:string; ticks?:number[]; at:string};
 // One account's health in this world, replayed from account.state. by: a probe's verdict or a cat's report; since: the monitor's clock then; step: its open quest.
 export type AccountHealth = {status:string; service:string; label:string; identity:string|null; expected:string|null; reason:string; by:'probe'|'report'; since:number; step:string|null; at:string};
-export type Goal = {id:string; title:string; success:string; status:'active'|'paused'|'achieved'|'stopped'; mode:string; rounds:number; roundsToday:number; day:string; failures:number; log:string[]; summary:string|null; maxRoundsPerDay:number|null; tokenBudget:number|null; pausedBy:string|null; note:string|null; endedBy:string|null; asleep?:boolean; ownerNotes?:string[]; ai?:{model?:string; effort?:string}; createdAt:string; updatedAt:string};
+// by: the team member who set the goal (plan 10.6); its rounds are their trees.
+export type Goal = {id:string; title:string; success:string; status:'active'|'paused'|'achieved'|'stopped'; mode:string; rounds:number; roundsToday:number; day:string; failures:number; log:string[]; summary:string|null; maxRoundsPerDay:number|null; tokenBudget:number|null; pausedBy:string|null; note:string|null; endedBy:string|null; asleep?:boolean; ownerNotes?:string[]; ai?:{model?:string; effort?:string}; by?:string; createdAt:string; updatedAt:string};
 export type Treasury = {amountMinor:number;currency:string;note:string;source:'owner-recorded';recordedAt:string};
 export type Council = {id:string;target:string;proposer:string;reason:string;evidence:string[];electorate:string[];mode:string;status:string;votes:{cat:string;vote:'retire'|'keep'|'abstain';reason:string}[];at:string;result?:string};
 export type RetiredCat = Cat & {retiredAt:string;council:string;reason:string;roads:Road[]};
-export type State = {routines:Routine[]; effects:Record<string,Effect>; cats:Cat[]; roads:Road[]; tasks:Task[]; approvals:Approval[]; messages:any[]; events:Event[]; paused:boolean; usage:any[];treasury:Treasury|null;retiredCats:RetiredCat[];councils:Council[];layoutVersion:number;groups:Group[];introduced:boolean;goals:Goal[];ownerSteps:OwnerStep[];hiddenQuests:Record<string,string|null>;accounts:Record<string,AccountHealth>;handoffs?:Record<string,string>;skipped?:Record<string,number>;unknown?:Record<string,number>;usageCap?:number|null;capOverride?:string|null};
+/** A For you card (plan 9.2): a Heads-up or a Suggestion raised by a rule over an outside source. No body, snippet or attendee list is ever kept.
+ *  source: where it came from ('gmail', 'calendar', 'clowder'). account: the connector id, null for Clowder's own. sourceId: the thread, event or goal id.
+ *  subject: cut to SUGGESTION_SUBJECT_MAX. person: an opaque key the collector derives, never an address. sourceAt: the source's own time.
+ *  A closed card has why (the source moved), a started one task (the Request it sent), a dismissed one reason (null when none was given). */
+export type Suggestion = {id:string; source:string; account:string|null; sourceId:string; category:string; subject:string; person:string|null; sourceAt:string; status:'open'|'closed'|'started'|'dismissed'; raisedAt:string; endedAt?:string; why?:string; task?:string; reason?:string|null};
+export const SUGGESTION_SUBJECT_MAX=80;
+/** suggestion.raised's data: only these fields reach the journal, and the subject is cut, so no source text rides along. */
+export const suggestionRaised=(d:{id:string; source:string; account?:string|null; sourceId:string; category:string; subject:string; person?:string|null; sourceAt:string})=>
+  ({id:d.id,source:d.source,account:d.account??null,sourceId:d.sourceId,category:d.category,subject:[...d.subject].slice(0,SUGGESTION_SUBJECT_MAX).join(''),person:d.person??null,sourceAt:d.sourceAt});
+/** The open cards, oldest raised first. The state holds every card ever raised in this world, so 9.9 can read dismiss reasons from the same map. */
+export const openSuggestions=(s:State):Suggestion[]=>Object.values(s.suggestions??{}).filter(c=>c.status==='open');
+export type State = {routines:Routine[]; effects:Record<string,Effect>; cats:Cat[]; roads:Road[]; tasks:Task[]; approvals:Approval[]; messages:any[]; events:Event[]; paused:boolean; usage:any[];treasury:Treasury|null;retiredCats:RetiredCat[];councils:Council[];layoutVersion:number;groups:Group[];introduced:boolean;goals:Goal[];ownerSteps:OwnerStep[];hiddenQuests:Record<string,string|null>;accounts:Record<string,AccountHealth>;handoffs?:Record<string,string>;skipped?:Record<string,number>;unknown?:Record<string,number>;usageCap?:number|null;capOverride?:string|null;suggestions?:Record<string,Suggestion>};
 export const roadId = (a:string,b:string) => [a,b].sort().join(':');
 // Keys in a stable order, so the same arguments always give the same hash.
 export const sorted=(v:any):any=>Array.isArray(v)?v.map(sorted):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,sorted(v[k])])):v;
 /** The publish ledger's key: account (connector id) + tool + a hash of the normalised arguments. */
 export const effectKey=(account:string,tool:string,args:unknown)=>{const hash=createHash('sha256').update(JSON.stringify(sorted(args))).digest('hex');return {key:`${account}:${tool}:${hash}`,hash};};
 /** The cats a world was founded with, read from its own journal. A world keeps these even if town.config.json later changes. */
-export function foundingCats(file:string,fallback:{id:string}[]):{id:string}[]{
+/** The town's cats now, read from its journal: the founders, then every recruit, without the cats a council retired (restored ones
+ *  come back). A season's roster (docs/economy-spec.md: "every cat in town.config.json plus any recruits"). */
+export function townCats(file:string,fallback:{id:string}[]):{id:string}[]{
   if(!existsSync(file))return fallback;
-  const founded=readFileSync(file,'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line)).find(e=>e.type==='founded');
-  return founded?.data?.cats??fallback;
+  const cats=new Map<string,{id:string}>(),targets=new Map<string,string>();
+  for(const line of readFileSync(file,'utf8').split('\n')){
+    let e:any;try{e=JSON.parse(line);}catch{continue;} // blank, or a torn last append
+    const d=e?.data??{};
+    if(e.type==='founded')for(const c of d.cats??[])cats.set(c.id,c);
+    else if(e.type==='cat.created')cats.set(d.id,d);
+    else if(e.type==='cat.restored')cats.set(d.cat.id,d.cat);
+    else if(e.type==='council.opened')targets.set(d.id,d.target);
+    else if(e.type==='council.closed'&&d.status==='retired')cats.delete(targets.get(d.id)!);
+  }
+  return cats.size?[...cats.values()]:fallback;
 }
 /** A journal's bytes split at the last newline: the complete lines, and a tail that an append was still writing (empty when the file ends in a newline). */
 export function splitJournal(buf:Buffer):{lines:Buffer;tail:Buffer}{const end=buf.lastIndexOf(10)+1;return {lines:buf.subarray(0,end),tail:buf.subarray(end)};}
@@ -72,6 +107,9 @@ export function splitJournal(buf:Buffer):{lines:Buffer;tail:Buffer}{const end=bu
 function repairTail(file:string):string{
   const buf=readFileSync(file),{lines,tail}=splitJournal(buf);
   if(!tail.toString('utf8').trim())return buf.toString('utf8');
+  // No whole line, and zero bytes in what is there: nothing was being appended, the file lost its contents (a power cut can leave a file
+  // its size but not its bytes). Cut back to nothing it would open as a new, empty town without a word, so it fails closed like a damaged line.
+  if(!lines.length&&tail.includes(0))throw new Error(`${file} holds no readable events (${tail.length} bytes, zeros among them), so this town will not open. Nothing was changed. Restore a backup: data/backups holds a copy from before each upgrade.`);
   const sync=(path:string,flags:string,fn:(fd:number)=>void)=>{const fd=openSync(path,flags);try{fn(fd);fsyncSync(fd);}finally{closeSync(fd);}};
   try{JSON.parse(tail.toString('utf8'));sync(file,'a',fd=>writeSync(fd,'\n'));console.warn(`${file}: the last line had no newline; added one.`);return buf.toString('utf8')+'\n';}catch{}
   const aside=`${file}.torn-${new Date().toISOString().replace(/[:.]/g,'-')}`;
@@ -85,11 +123,11 @@ function repairTail(file:string):string{
 export const EVENT_TYPES=new Set(['founded','homes.planned','town.planned','group.founded','council.opened','council.voted','council.closed','cat.restored',
   'home.styled','home.looked','home.moved','cat.customized','cat.ai','cat.skills','cat.ai.suggested','looks.planned','cat.created','road.created','message',
   'task.created','task.updated','approval.requested','approval.resolved','paused','usage','usage.cap','usage.cap.override','world.introduced','treasury.recorded',
-  'purchase.requested','purchase.decided','purchase.paid','purchase.authorization','owner.step','owner.step.done','owner.step.sign-in','owner.step.dismissed',
+  'purchase.requested','purchase.decided','purchase.paid','purchase.authorization','owner.step','owner.step.done','owner.step.sign-in','owner.step.dismissed','owner.step.tick',
   'quest.hidden','quest.handoff','goal.created','goal.archived','goal.updated','effect.intended','effect.done','effect.failed','effect.unknown',
   'routine.saved','routine.removed','routine.ran','routine.briefed','account.state','account.error','tool.started','tool.finished','memory.noted',
   'diary.entry','artifact.created','wiki.saved','wiki.line','wiki.removed','hermes.hello','hermes.ready','hermes.started','hermes.stopped',
-  'hermes.crashed','hermes.answered','hermes.refused','hermes.undelivered']);
+  'hermes.crashed','hermes.answered','hermes.refused','hermes.undelivered','suggestion.raised','suggestion.closed','suggestion.started','suggestion.dismissed','owner.mcp']);
 /** Upcasters, UPCAST['type@v'], each taking one version's data to the next. Replay steps an older event up to the version this build knows,
  *  in memory only: the journal is never rewritten. Empty while every type is at v1. */
 export const UPCAST:Record<string,(data:any)=>any>={};
@@ -127,8 +165,14 @@ export class Store {
   }
   /** What replay depends on, for the read-model fingerprint: apply(), the upcasters and the known types. */
   static replayCode(){return [Store.prototype.apply.toString(),applyCatAi.toString(),...Object.entries(UPCAST).map(([k,f])=>`${k}=${f}`),[...EVENT_TYPES].join()].join('\n');}
+  /** Who the code now running acts for (plan 10.6): a team member's person id, or undefined for the owner and the town. Every emit inside withBy
+   *  carries it, through awaits, timers and callbacks too, so the engine enters it at each root (a task's run, a pickup, a round, a decision) and
+   *  each timer it arms resets it: a timer armed inside a member's work must not stamp later owner work. */
+  private acting=new AsyncLocalStorage<string|undefined>();
+  withBy<T>(by:string|undefined,fn:()=>T):T{return this.acting.run(by,fn);}
+  currentBy(){return this.acting.getStore();}
   emit(type:string,data:any) {
-    const v=eventVersion(type),event:Event={id:randomUUID(),at:new Date().toISOString(),type,...(v>1?{v}:{}),data},line=JSON.stringify(event)+'\n';
+    const v=eventVersion(type),by=this.acting.getStore(),event:Event={id:randomUUID(),at:new Date().toISOString(),type,...(v>1?{v}:{}),...(by?{by}:{}),data},line=JSON.stringify(event)+'\n';
     const fd=openSync(this.file,'a');
     try {writeSync(fd,line);fsyncSync(fd);} finally {closeSync(fd);}
     this.size+=line.length;this.apply(event);for(const listener of this.listeners)listener(event);
@@ -172,7 +216,7 @@ export class Store {
     if(e.type==='approval.requested')s.approvals.push(d);
     if(e.type==='approval.resolved'){const a=s.approvals.find(x=>x.id===d.id);if(a)Object.assign(a,d);else missed=true;}
     if(e.type==='paused')s.paused=d.value;
-    if(e.type==='usage')s.usage.push({...d,at:e.at});
+    if(e.type==='usage')s.usage.push({...d,at:e.at,...(e.by?{by:e.by}:{})});
     // The town-wide monthly token cap (usage.ts): null is none. An override lets this month (a month key) run past it.
     if(e.type==='usage.cap')s.usageCap=d.tokens??null;
     if(e.type==='usage.cap.override')s.capOverride=d.month??null;
@@ -184,6 +228,7 @@ export class Store {
     if(e.type==='owner.step.done'){const step=s.ownerSteps.find(x=>x.id===d.id);if(step){step.status='done';step.note=d.note||'';}}
     if(e.type==='owner.step.sign-in'){const step=s.ownerSteps.find(x=>x.id===d.id);if(step)step.signInAt=e.at;}
     if(e.type==='owner.step.dismissed'){const step=s.ownerSteps.find(x=>x.id===d.id);if(step)step.status='dismissed';}
+    if(e.type==='owner.step.tick'){const step=s.ownerSteps.find(x=>x.id===d.id);if(step)step.ticks=d.ticks;}
     // A hidden quest stays hidden only while its time is the one it was hidden at (see quests()).
     if(e.type==='quest.hidden')s.hiddenQuests[d.id]=d.at??null;
     // A quest handed off to the computer (item 1.6): when, so the host lists it first while it is fresh (see quests()).
@@ -202,13 +247,18 @@ export class Store {
     if(e.type==='account.state'){const {id,to,from:_from,...rest}=d;s.accounts[id]={...rest,status:to,at:e.at};}
     if(e.type==='routine.removed')s.routines=s.routines.filter(r=>r.id!==d.id);
     if(e.type==='routine.ran'){const r=s.routines.find(x=>x.id===d.id);if(r)Object.assign(r,{lastRunAt:d.lastRunAt,note:d.note??null},d.task?{lastTask:d.task}:{});}
+    // For you cards (plan 9.2). Created lazily, so a world with none replays to the same state as before. A re-raise (the source moved again) opens the card afresh.
+    if(e.type==='suggestion.raised')(s.suggestions??={})[d.id]={...d,status:'open',raisedAt:e.at};
+    if(e.type==='suggestion.closed'){const c=s.suggestions?.[d.id];if(c)Object.assign(c,{status:'closed',why:d.why,endedAt:e.at});else missed=true;}
+    if(e.type==='suggestion.started'){const c=s.suggestions?.[d.id];if(c)Object.assign(c,{status:'started',task:d.task,endedAt:e.at});else missed=true;}
+    if(e.type==='suggestion.dismissed'){const c=s.suggestions?.[d.id];if(c)Object.assign(c,{status:'dismissed',reason:d.reason??null,endedAt:e.at});else missed=true;}
 
     if(missed)(s.skipped??={})[e.type]=(s.skipped[e.type]??0)+1;
   }
   /** The small part of what clients see. state-delta.ts diffs it per event. Owner steps, account health, the publish ledger and hidden quests reach the page through their own routes, never here. */
   // Routines are read through /api/routines, so their webhook hashes never reach a viewer's state.
-  // The monthly cap reaches the page through /api/usage (usage.ts).
-  small(){const {tasks,messages,events,approvals,usage,ownerSteps,effects,hiddenQuests,handoffs,routines,accounts,usageCap,capOverride,...rest}=this.state;return {...rest,usage:usageSummary(usage)};}
+  // The monthly cap reaches the page through /api/usage (usage.ts). For you cards are owner-only and reach the page through the quest log (plan 9.6).
+  small(){const {tasks,messages,events,approvals,usage,ownerSteps,effects,hiddenQuests,handoffs,routines,accounts,usageCap,capOverride,suggestions,...rest}=this.state;return {...rest,usage:usageSummary(usage)};}
   /** What /api/state carries: recent data only (ux-audit F1: the full state was 6.7 MB). Older chat history and finished tasks load per cat through chat(). seq is the journal position, so the page can tell which SSE frames it already has. */
   snapshot(l:SnapshotLimits){
     const s=this.state,keep=new Set([...s.cats.map(c=>c.directs),...s.groups.map(g=>g.rootTask)]);
@@ -230,7 +280,8 @@ export class Store {
   }
   /** One thread: the root task, every task it delegated to (parent chains), and the messages on any of them, newest `limit` before `before`,
    *  in journal order. Tasks go through publicTask, so no model context leaves. Null when the root task is not in this town. */
-  thread(root:string,{before,limit}:{before?:string;limit:number}){
+  // participants (plan 10.12): the owner, then each team member whose tree this thread is (a task's by, children inherit it), named by name().
+  thread(root:string,{before,limit,name}:{before?:string;limit:number;name?:(id:string)=>string|undefined}){
     const tasks=this.state.tasks;
     if(!tasks.some(t=>t.id===root))return null;
     // ponytail: fixed-point over the task list, O(depth x tasks); a town has a few hundred tasks at most.
@@ -239,7 +290,9 @@ export class Store {
     const all=this.state.messages.filter(m=>m.task&&ids.has(m.task));
     const i=before===undefined?all.length:all.findIndex(m=>m.id===before);
     if(i<0)throw new Error('That message is not in this town.');
-    return {messages:all.slice(Math.max(0,i-limit),i),more:i-limit>0,tasks:tasks.filter(t=>ids.has(t.id)).map(publicTask)};
+    const members=[...new Set(tasks.filter(t=>ids.has(t.id)&&t.by).map(t=>t.by as string))];
+    const participants=[{id:OWNER,name:name?.(OWNER)??'Owner'},...members.map(id=>({id,name:name?.(id)??'A team member'}))];
+    return {messages:all.slice(Math.max(0,i-limit),i),more:i-limit>0,tasks:tasks.filter(t=>ids.has(t.id)).map(publicTask),participants};
   }
 }
 export type SnapshotLimits={messages:number;events:number;approvals:number};

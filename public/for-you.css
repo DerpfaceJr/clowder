@@ -1,0 +1,22 @@
+/* For you (plan 9.11): the Inbox section's layout and the settings sheet's touch sizes. Colours, type and sizes are the style.css :root
+   tokens only; the cards reuse the Inbox's .quest classes, the card sheet its .quest-sheet classes and the settings the owner panels'. */
+.for-you-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin:0 0 var(--space-2);min-width:0}
+.for-you-head .rank-heading{margin:0;min-width:0}
+.for-you-settings{flex:none;min-height:var(--tap);min-width:var(--tap);padding:0 var(--space-3);font-size:var(--text-sm)}
+.for-you-empty{margin:0;font-size:var(--text-sm);line-height:1.45;color:var(--muted)}
+.for-you-card .quest-buttons>button{min-width:var(--tap)}
+.for-you-why{margin:var(--space-2) 0 0;padding:var(--space-2) 0 0;border-top:1px solid var(--line)}
+.for-you-why-label{margin:0;font-size:var(--text-sm);font-weight:600;color:var(--ink)}
+.for-you-why .quest-buttons{margin-top:var(--space-1)}
+.for-you-folded{align-items:center}
+.for-you-folded .for-you-folded-line{white-space:normal;color:var(--ink-2)}
+.for-you-folded .quest-buttons{margin-top:var(--space-1)}
+.for-you-sheet .quest-callout>p{margin:0}
+.for-you-sheet .quest-callout>p+p{margin-top:var(--space-1)}
+.for-you-sheet :is(.for-you-start-note,.for-you-note){margin:0;font-size:var(--text-sm);line-height:1.45}
+.for-you-sheet .for-you-note{color:var(--muted)}
+.for-you-sheet .quest-open{justify-self:start;margin:0;border:0;max-width:100%;overflow-wrap:anywhere}
+.for-you-dialog :is(button,select){min-height:var(--tap)}
+.for-you-dialog label.op-switch{min-height:var(--tap);min-width:var(--tap)}
+.for-you-dialog .for-you-kinds>li{padding:var(--space-1) 0}
+.for-you-dialog .op-row-head>.op-field{flex:1 1 200px}

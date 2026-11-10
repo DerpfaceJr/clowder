@@ -1,0 +1,30 @@
+/* People and a member's own view, Yours (people-panel.js, plan 10.11). The dialogs are owner-dialog.js's (owner-panels.css); cards, sections,
+   dots and messages are the connectors panel's cx- classes. Colours, radii, spacing and type are style.css's tokens only. */
+.op-dialog .pp-who{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-2);min-width:0}
+.op-dialog .pp-name{font:600 var(--text-md)/1.3 var(--font-ui);color:var(--ink);overflow-wrap:anywhere}
+.op-dialog .pp-role{font-size:var(--text-xs);color:var(--muted)}
+.op-dialog .pp-text{font-size:var(--text-sm);line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+
+/* Online now: one pill per person. */
+.pp-online{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.pp-online li{display:inline-flex;align-items:center;gap:var(--space-2);min-width:0;max-width:100%;min-height:32px;padding:0 var(--space-3);border-radius:var(--r-pill);background:var(--paper-2);font-size:var(--text-sm)}
+.pp-online .pp-name{font-size:var(--text-sm)}
+
+/* An invite: the copy box, then the QR on the white the camera needs (immersive.css .pair-qr). */
+.pp-invite{display:grid;gap:var(--space-2);min-width:0;padding:var(--space-3);border-radius:var(--r-md);background:var(--owner-bubble)}
+.pp-qr{margin:var(--space-2) auto 0}
+.pp-qr img{display:block;width:100%;height:100%}
+
+/* Yours: a typed answer beside its button; a request's Open button stays on its row. */
+.pp-answer{display:flex;gap:var(--space-2);min-width:0}
+.op-dialog .pp-answer input{flex:1 1 auto;width:auto}
+.op-dialog .pp-request{padding:var(--space-3)}
+.op-dialog textarea{min-height:88px}
+
+/* A member's page (body.member): Inbox and the composer are the owner's, so Yours takes Inbox's place in the dock and a pointer takes the
+   composer's in the chat panel. The owner's other worlds and the money are not a member's either: their routes answer 403 (access.ts). */
+body.member :is(#toggle-quests,#chat-form,#worlds-button,#treasury-button,.menu-row[data-category="worlds"]){display:none!important}
+.pp-member-ask{display:grid;gap:var(--space-2);margin:0 var(--space-4) var(--space-3);padding:var(--space-3);border-radius:var(--r-md);background:var(--owner-bubble)}
+.pp-member-ask[hidden]{display:none}
+.pp-member-ask p{margin:0;font-size:var(--text-sm);line-height:1.45;color:var(--ink)}
+.pp-member-ask button{min-height:var(--tap);justify-self:start}

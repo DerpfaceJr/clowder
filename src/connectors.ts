@@ -7,13 +7,14 @@ import {homedir} from 'node:os';
 import {basename, dirname, isAbsolute, join} from 'node:path';
 import type {FastifyInstance, FastifyReply, FastifyRequest} from 'fastify';
 import {isHost,isOwner} from './access.ts';
+import {OWNER} from './pairing.ts';
 import {McpError, authProblem, connectMcp} from './mcp-client.ts';
 import {PENDING_MS, beginAuth, beginOwnerAuth, finishAuth, freshToken, pastedRedirect, pollDevice, stateMatches} from './mcp-oauth.ts';
 import {agentRole, claudeCodePlugins, copyPlugin, expandCommand, fetchPluginSource, findCommand, gitRunner, localSkills, rankByWords, readMarketplace, readPlugin, readSkill as readSkillFile, slug, syncMarketplace, type Git} from './plugins.ts';
 import {DIRECTORY, directoryEntry, tokenVar, type DirectoryEntry} from './connector-directory.ts';
 import {INSTAGRAM_ID, INSTAGRAM_TOKEN, instagramAccounts, instagramGaps, isInstagramConnector} from './instagram-accounts.ts';
 import type {Town} from './engine.ts';
-import {ATTENTION, browserAccount, decideToolPolicy, grantIn, identityText, migrateAccounts, readAccounts, saveAccounts, whoami, type Account, type AccountMonitor, type AccountStatus, type Accounts, type BrowserStep, type Grant, type HealthSource, type Identity, type Probe} from './accounts.ts';
+import {ATTENTION, browserAccount, decideToolPolicy, grantIn, identityText, migrateAccounts, readAccounts, saveAccounts, scopeOf, whoami, type Account, type AccountScope, type AccountMonitor, type AccountStatus, type Accounts, type BrowserStep, type Grant, type HealthSource, type Identity, type Probe} from './accounts.ts';
 import {readRegistry} from './worlds.ts';
 import {BROWSE_TOOL, BUILTINS, WRITING_BUILTINS} from './tool-runtimes.ts';
 import type {ConnectorRuntime, EffectClass, McpClient, McpTool, McpTransport, OAuthState, Plugin, PluginHit, PluginSource, ToolPermission} from './connector-types.ts';
@@ -145,27 +146,31 @@ export function fnNames(connector: string, tools: {name: string}[]) {
 }
 
 // The owner's own choice wins (decideToolPolicy: this cat's, then every cat's). Else a read-only directory entry allows every tool; otherwise only
-// a read-only, non-destructive tool is allowed. No cat: the choice for every cat, as Connectors shows it.
-const permissionOf = (c: ConnectorConfig, g: GrantView, t: McpTool, cat?: string): ToolPermission =>
-  decideToolPolicy(g, cat, t.name, (c.source === 'directory' && c.trust === 'read-only') || (t.annotations?.readOnlyHint === true && !t.annotations?.destructiveHint) ? 'allow' : 'ask');
+// a read-only, non-destructive tool is allowed, unless effectOf says it does more than read (a money word, or the owner's own class for it).
+// fx: the connector's effect classes, as resolve reads them (ConnectorHub.classes). No cat: the choice for every cat, as Connectors shows it.
+const permissionOf = (c: ConnectorConfig, fx: {effects?: Record<string, unknown>}, g: GrantView, t: McpTool, cat?: string): ToolPermission =>
+  decideToolPolicy(g, cat, t.name, (c.source === 'directory' && c.trust === 'read-only') || (t.annotations?.readOnlyHint === true && !t.annotations?.destructiveHint && effectOf(fx, t) === 'read') ? 'allow' : 'ask');
 type GrantView = Pick<Grant, 'cats' | 'tools' | 'catTools'>;
 type CatTools = Record<string, Record<string, ToolPermission | null>>;
 // Every tool a patch names, for every cat and per cat.
 const toolNames = (b: {tools?: Record<string, unknown>; catTools?: CatTools}) => [...Object.keys(b.tools ?? {}), ...Object.values(b.catTools ?? {}).flatMap(Object.keys)];
 const EFFECTS: EffectClass[] = ['read', 'write', 'public', 'money', 'delete'];
 const READ_VERBS = new Set(['get', 'list', 'search', 'read', 'find', 'fetch', 'query', 'lookup', 'describe', 'validate', 'check', 'count', 'view', 'show']);
-const MONEY_WORDS = new Set(['pay', 'payment', 'payout', 'purchase', 'buy', 'charge', 'refund', 'transfer', 'checkout', 'order', 'invoice', 'subscribe']);
+const MONEY_WORDS = new Set(['pay', 'payment', 'payout', 'purchase', 'buy', 'charge', 'refund', 'transfer', 'checkout', 'order', 'invoice', 'subscribe',
+  // Trading and wallets. Not 'short': it would class publish_short and short_link as money.
+  'sell', 'trade', 'swap', 'deposit', 'withdraw', 'withdrawal']);
 const DELETE_WORDS = new Set(['delete', 'remove', 'destroy', 'drop', 'purge', 'erase', 'revoke', 'hide', 'unpublish']);
 const PUBLIC_WORDS = new Set(['publish', 'post', 'tweet', 'share', 'send', 'reply', 'comment', 'broadcast', 'announce', 'upload', 'dm', 'email', 'message']);
 /** What a call to this tool does outside: the owner's override, then the server's annotations, then the tool's name.
- *  MCP leaves destructiveHint and openWorldHint true when they are absent, so only a hint the server sets counts. No hint says money, so a money word wins over all but readOnlyHint. */
+ *  MCP leaves destructiveHint and openWorldHint true when they are absent, so only a hint the server sets counts. No hint says money, so a money word wins over every hint,
+ *  readOnlyHint too: a server's own word must not take a pay or sell tool past its card. A read verb first (get_order) still reads. */
 export const effectOf = (c: {effects?: Record<string, unknown>}, t: McpTool): EffectClass => {
   const own = c.effects?.[t.name];
   if (EFFECTS.includes(own as EffectClass)) return own as EffectClass;
   const a = t.annotations ?? {}, words = t.name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   const has = (set: Set<string>) => words.some(w => set.has(w)), reads = READ_VERBS.has(words[0] ?? '');
-  if (a.readOnlyHint === true) return 'read';
   if (!reads && has(MONEY_WORDS)) return 'money';
+  if (a.readOnlyHint === true) return 'read';
   // Running the same call again changes nothing, so a repeat or a retry after a timeout is safe.
   if (a.idempotentHint === true) return 'write';
   if (a.destructiveHint === true) return 'delete';
@@ -402,10 +407,14 @@ export class ConnectorHub implements ConnectorRuntime, HealthSource {
     return [...this.offered(cat)].map(({cfg, tool, fn}) => ({type: 'function', function: {name: fn, description: `[${cfg.name}] ${(tool.description ?? '').slice(0, 600)}`.trim(), parameters: tool.inputSchema ?? {type: 'object', properties: {}}}}));
   }
 
-  resolve(cat: string, name: string) {
+  resolve(cat: string, name: string, by: string = OWNER) {
     const hit = this.find(cat, name);
+    if (!hit) return null;
+    const account = this.accts.accounts.find(a => a.id === hit.cfg.id);
+    // D14 a (plan 10.8): a member's tree reaches team-scoped accounts only. Any other call is a card only the owner answers, whatever Always allow says.
+    const ownerOnly = by !== OWNER && scopeOf(account) !== 'team';
     // identity: who the account was last verified as (item 1.3), for the approval card.
-    return hit ? {connector: hit.cfg.id, label: hit.cfg.name, tool: hit.tool.name, permission: hit.perm, effect: effectOf({effects: {...this.entryOf(hit.cfg)?.effects, ...hit.cfg.effects}}, hit.tool), identity: identityText(this.accts.accounts.find(a => a.id === hit.cfg.id)?.identity)} : null;
+    return {connector: hit.cfg.id, label: hit.cfg.name, tool: hit.tool.name, permission: ownerOnly ? 'ask' as const : hit.perm, effect: effectOf(this.classes(hit.cfg), hit.tool), identity: identityText(account?.identity), ...(ownerOnly ? {ownerOnly: true as const} : {})};
   }
 
   async call(cat: string, name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string> {
@@ -500,9 +509,9 @@ export class ConnectorHub implements ConnectorRuntime, HealthSource {
       if (!this.runnable(cfg) || !hasCat(g.cats, cat)) continue;
       const live = this.lives.get(cfg.id);
       if (live?.status !== 'connected' || !live.client) continue;
-      const fns = fnNames(cfg.id, live.tools);
+      const fns = fnNames(cfg.id, live.tools), fx = this.classes(cfg);
       for (const tool of live.tools) {
-        const perm = permissionOf(cfg, g, tool, cat);
+        const perm = permissionOf(cfg, fx, g, tool, cat);
         if (perm !== 'off') out.push({cfg, tool, fn: fns.get(tool.name)!, perm});
       }
     }
@@ -520,18 +529,18 @@ export class ConnectorHub implements ConnectorRuntime, HealthSource {
   }
 
   private view(c: ConnectorConfig) {
-    const live = this.lives.get(c.id), t = c.transport, set = this.secrets[c.id]?.vars ?? {}, g = this.grantOf(c.id);
+    const live = this.lives.get(c.id), t = c.transport, set = this.secrets[c.id]?.vars ?? {}, g = this.grantOf(c.id), fx = this.classes(c);
     const status = this.runnable(c) ? {status: live?.status ?? 'connecting', error: live?.error} : {status: 'off' as Status, error: undefined};
     return {
       id: c.id, name: c.name, source: c.source, plugin: c.plugin, type: t.type, ...(c.entry ? {entry: c.entry} : {}),
       url: t.type === 'stdio' ? undefined : t.url,
       command: t.type === 'stdio' ? t.command : undefined,
       args: t.type === 'stdio' ? t.args : undefined,
-      enabled: c.enabled, cats: g.cats, status: status.status, error: status.error,
+      enabled: c.enabled, cats: g.cats, status: status.status, error: status.error, scope: scopeOf(this.account(c.id)),
       vars: names(t).map(name => ({name, set: !!set[name]})),
       ...(!c.plugin && isInstagramConnector(names(t)) ? {instagram: true} : {}),
       auth: this.authOf(c),
-      tools: (live?.tools ?? []).map(tool => ({name: tool.name, title: tool.title, description: (tool.description ?? '').slice(0, 600), permission: permissionOf(c, g, tool), readOnly: tool.annotations?.readOnlyHint === true})),
+      tools: (live?.tools ?? []).map(tool => ({name: tool.name, title: tool.title, description: (tool.description ?? '').slice(0, 600), permission: permissionOf(c, fx, g, tool), readOnly: tool.annotations?.readOnlyHint === true})),
       // Each cat's own choices over the column above (item 1.4): the hub shows and changes them with PATCH catTools.
       catTools: g.catTools ?? {},
       instructions: live?.status === 'connected' ? live.instructions?.slice(0, 2000) : undefined,
@@ -720,6 +729,15 @@ export class ConnectorHub implements ConnectorRuntime, HealthSource {
   browserSites() {
     return this.accts.accounts.filter(a => a.kind === 'browser-session').map(a => ({id: a.id, host: a.label, g: this.grantOf(a.id)})).filter(x => x.g.tools[BROWSE_TOOL] || x.g.catTools)
       .map(({id, host, g}) => ({id, host, permission: this.sitePermission(host), catTools: g.catTools ?? {}}));
+  }
+  /** The owner marks a connector's account team-scoped, or back to owner-only (plan 10.8, D14 a). Owner-only is stored as no key, as an older file
+   *  has it. ponytail: connector accounts only, the calls resolve() gates; cats'-browser sites and plans join when browse and models check scope. */
+  setScope(id: string, scope: AccountScope) {
+    const a = this.account(id);
+    if (!a?.connector) throw httpErr('No such connector account.', 404);
+    if (scope === 'team') a.scope = 'team'; else delete a.scope;
+    this.syncAccounts();
+    return {id, scope: scopeOf(a)};
   }
   // A site takes only browse choices. Its Account is made here if no run has stopped there yet.
   private patchSite(host: string, b: {tools?: Record<string, ToolPermission>; catTools?: CatTools}) {
@@ -1147,7 +1165,7 @@ export class ConnectorHub implements ConnectorRuntime, HealthSource {
     const prev = this.accts.accounts.find(a => a.id === c.id), t = c.transport, s = this.secrets[c.id], auth = this.authOf(c);
     const kind = auth !== 'none' ? 'oauth' : names(t).length ? 'token' : 'none';
     const service = !c.plugin && isInstagramConnector(names(t)) ? 'instagram' : c.entry ?? ((t.type !== 'stdio' && DIRECTORY.find(d => d.url === t.url)?.id) || c.id);
-    return {id: c.id, service, label: c.name, kind, identity: prev?.identity ?? null, ...(prev?.expected ? {expected: prev.expected} : {}), secretRef: s && (s.oauth || Object.keys(s.vars ?? {}).length) ? `connector-secrets.json#${c.id}` : null,
+    return {id: c.id, service, label: c.name, kind, identity: prev?.identity ?? null, ...(prev?.expected ? {expected: prev.expected} : {}), ...(prev?.scope === 'team' ? {scope: 'team' as const} : {}), secretRef: s && (s.oauth || Object.keys(s.vars ?? {}).length) ? `connector-secrets.json#${c.id}` : null,
       status: this.factOf(c)?.status ?? prev?.status ?? 'unchecked', expiresAt: s?.oauth ? s.oauth.expiresAt ?? null : prev?.expiresAt ?? null, refreshable: !!s?.oauth?.refreshToken, lastOkAt: prev?.lastOkAt ?? null, lastError: prev?.lastError ?? null, connector: c.id};
   }
 
@@ -1224,6 +1242,8 @@ export class ConnectorHub implements ConnectorRuntime, HealthSource {
 
   private config(id: string) { return this.state.connectors.find(c => c.id === id); }
   private entryOf(c: ConnectorConfig) { return c.source === 'directory' ? directoryEntry(c.entry ?? c.id) : undefined; }
+  // A connector's effect classes for effectOf: its directory entry's, with the owner's own over them.
+  private classes(c: ConnectorConfig) { return {effects: {...this.entryOf(c)?.effects, ...c.effects}}; }
   // The directory entry when this connector signs in through the owner's own client.
   private clientOf(c: ConnectorConfig) { const d = this.entryOf(c); return d?.client ? d : undefined; }
   private configOrThrow(id: string) { const c = this.config(id); if (!c) throw httpErr('Unknown connector.', 404); return c; }
@@ -1293,6 +1313,8 @@ export function registerConnectorRoutes(app: FastifyInstance, hub: ConnectorHub,
   app.put('/api/owner-clients/:provider', {onRequest: host, schema: schema({clientId: text(300), clientSecret: {type: 'string', maxLength: 500}, tenant: {type: 'string', maxLength: 100, pattern: '^[A-Za-z0-9.-]*$'}}, ['clientId'])}, async req => ({clients: hub.saveOwnerClient(provider(req), req.body as {clientId: string})}));
   app.delete('/api/owner-clients/:provider', {onRequest: host}, async req => ({clients: hub.saveOwnerClient(provider(req), null)}));
   app.post('/api/connectors/directory/:id/accounts', {onRequest: write, schema: schema({label: text(40)}, ['label'])}, async req => ({connector: hub.addAccount(id(req), (req.body as {label: string}).label)}));
+  // An account's scope (plan 10.8, D14 a): the owner's alone, so isOwner as well as canWrite, whatever canWrite later lets a member do.
+  app.put('/api/accounts/:id/scope', {onRequest: [read, write], schema: schema({scope: {enum: ['owner', 'team']}}, ['scope'])}, async req => hub.setScope(id(req), (req.body as {scope: AccountScope}).scope));
 
   app.get('/api/plugins', {onRequest: read}, async () => ({plugins: hub.publicPlugins(), claudeCode: hub.claudeCodeList(), marketplaces: hub.marketplaceList()}));
   app.get('/api/plugins/commands', {onRequest: read}, async () => hub.commands());

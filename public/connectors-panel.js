@@ -1,4 +1,4 @@
-// Connectors and plugins: the owner's panel, opened from ☰ > Devices & AI. Connectors are MCP servers; plugins are Claude Code
+// Connectors and plugins: the owner's panel, opened from Post office > Apps. Connectors are MCP servers; plugins are Claude Code
 // plugin folders. The panel talks only to the routes in docs/connectors-spec.md. The pure helpers are exported for Node tests and
 // the module touches no DOM at import. Server text is written with textContent only. Each control has a data-key (its busy and
 // focus key) and each message sits in a data-slot named after the request that made it, so an error shows by its control.

@@ -1,12 +1,11 @@
 // Memory (plan 3.7): the wiki pages the cats keep about people, projects, topics and the owner's preferences, which they read when they work.
-// ☰ > Memory opens this panel. It reads and writes through the owner routes in src/wiki.ts: GET /api/wiki (every page and the merge
+// The Archivist's corner opens this panel (its Memory chip, Options > Manage, /memory, the palette). It reads and writes through the owner routes in src/wiki.ts: GET /api/wiki (every page and the merge
 // suggestions, or ?q= for a search), GET and PUT /api/wiki/:slug, POST /api/wiki/:slug/forget, POST /api/wiki/merge {from,into} and
 // POST /api/wiki/organise. Lines the owner wrote are marked as theirs (the server keeps that list). Forget and merge ask first. The old
 // memory graph (memory-view.js) is the panel's second view, Graph, and a page's note sources open there. The pure helpers are exported
 // for Node tests; the DOM is built with createElement and textContent only, so nothing a page says can become markup.
 import {ago} from './quests-panel.js';
 import {confirmDialog} from './dialogs.js';
-import {registerSettingsSection} from './settings-menu.js';
 import {ensureStyles, h, msgNode, ownerDialog, readJson, sendJson} from './owner-dialog.js';
 import {emptyState} from './empty-state.js';
 
@@ -85,7 +84,7 @@ export function editDraft({title, kind, body}) {
   return {body: {...(name ? {title: name} : {}), kind: kindOf(kind), body: text}};
 }
 
-/** The ☰ row's subtitle. */
+/** A one-line summary of the pages: loading, none yet, or how many. */
 export function rowSummary(pages, loaded) {
   if (!loaded) return 'What the cats know';
   const n = list(pages).length;
@@ -387,7 +386,7 @@ export function createMemoryPanel({doc = document, win = globalThis.window, fetc
     await refresh();
   }
 
-  // Only an owner gets the pages; anywhere else the ☰ row stays hidden.
+  // Only an owner gets the pages; anywhere else the chat's Memory entries stay hidden.
   async function probe() {
     await refresh();
     return ui.denied === false;
@@ -396,17 +395,12 @@ export function createMemoryPanel({doc = document, win = globalThis.window, fetc
   return {open, close: () => dialog.close(), refresh, probe, summary: () => rowSummary(ui.pages, ui.loaded), dialog, openPage};
 }
 
-/** ☰ > Memory: a top-level row that opens the panel, for owners only. Called once by app.js. */
+/**
+ * Memory lives with the Archivist (docs/design/menu-chat-mailman.md): its corner chip, Options > Manage, /memory and the palette open this
+ * panel. Owners only: ready resolves true once the routes answer, and the chat offers it from then on. Called once by app.js.
+ */
 export function initMemoryPanel(options = {}) {
   const panel = createMemoryPanel(options);
-  let fallback = null;
-  registerSettingsSection('memory', 'Memory', container => {
-    fallback = h('button', {text: 'Memory…', attrs: {type: 'button', id: 'memory-open', 'data-owner': '', 'aria-haspopup': 'dialog'}});
-    fallback.hidden = true;
-    fallback.onclick = () => void panel.open();
-    container.append(fallback);
-  }, {icon: '✎', summary: panel.summary, action: () => void panel.open()});
-  void panel.probe().then(owner => { if (fallback) fallback.hidden = !owner; });
-  (options.doc ?? document).getElementById('menu-toggle')?.addEventListener('click', () => void panel.refresh());
+  panel.ready = panel.probe().catch(() => false);
   return panel;
 }

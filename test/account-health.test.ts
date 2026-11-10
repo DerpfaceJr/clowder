@@ -18,12 +18,12 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const fakeFetch = (routes: [RegExp, () => Response][]) => (async (url: string | URL) => { const hit = routes.find(([re]) => re.test(String(url))); if (!hit) throw new Error(`unexpected fetch ${url}`); return hit[1](); }) as typeof fetch;
 const client = (result: {text: string; isError: boolean}) => ({info: {}, listTools: async () => [{name: 'search'}], callTool: async () => result, close: async () => {}});
 
-function setup(connectors: unknown[], secrets: Record<string, unknown>, o: {fetch?: typeof fetch; result?: {text: string; isError: boolean}} = {}) {
+function setup(connectors: unknown[], secrets: Record<string, unknown>, o: {fetch?: typeof fetch; result?: {text: string; isError: boolean}; cats?: {id: string; name: string; role: string; color: string; icon: string}[]} = {}) {
   const dataDir = tmp('health-data-'), clock = {now: Date.now()};
   writeFileSync(join(dataDir, 'connectors.json'), JSON.stringify({connectors, plugins: []}));
   writeFileSync(join(dataDir, 'connector-secrets.json'), JSON.stringify(secrets));
   const hub = new ConnectorHub({dataDir, port: 4321, home: tmp('health-home-'), connect: (async () => client(o.result ?? {text: 'ok', isError: false})) as any, fetch: o.fetch ?? fakeFetch([]), now: () => clock.now});
-  const file = join(dataDir, 'events.jsonl'), store = new Store(file, [{id: 'mayor', name: 'Mayor', role: '', color: '', icon: ''}]);
+  const file = join(dataDir, 'events.jsonl'), store = new Store(file, o.cats ?? [{id: 'mayor', name: 'Mayor', role: '', color: '', icon: ''}]);
   const monitor = new AccountMonitor({source: hub, store: () => store, now: () => clock.now});
   hub.health = monitor;
   return {hub, store, monitor, clock, dataDir, file};
@@ -49,10 +49,21 @@ test('five cats hitting one refused sign-in give five account.error events and e
   assert.deepEqual(store.state.events.filter(e => e.type === 'account.error').map(e => e.data.cat), cats);
   assert.equal(steps(store, 'notes').length, 1, 'one quest for every cat');
   assert.equal(open(store, 'notes')[0]!.title, 'Sign in to Notes');
+  assert.equal(open(store, 'notes')[0]!.cat, 'mayor', 'a town without a Mailman: the Mayor files it');
   assert.equal(store.state.accounts.notes!.status, 'needs-sign-in');
   await monitor.tick(); // Notes has no identity endpoint: unchecked proves nothing against a refusal
   assert.equal(store.state.accounts.notes!.status, 'needs-sign-in');
   assert.equal(open(store, 'notes').length, 1);
+  await hub.dispose();
+});
+
+test('the health check files its quest as the Mailman when the town has one', async () => {
+  const cats = [{id: 'mayor', name: 'Mayor', role: '', color: '', icon: ''}, {id: 'mailman', name: 'Mailman', role: '', color: '', icon: ''}];
+  const {hub, store, monitor} = setup([http('notes', 'Notes', 'https://notes.example/mcp')], {}, {result: {text: 'HTTP 401 Unauthorized: invalid_token', isError: true}, cats});
+  await connected(hub, 'notes');
+  await hub.call('builder', 'mcp__notes__search', {}, new AbortController().signal);
+  await monitor.tick();
+  assert.deepEqual(open(store, 'notes').map(s => s.cat), ['mailman']);
   await hub.dispose();
 });
 

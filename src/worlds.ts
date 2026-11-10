@@ -7,7 +7,9 @@ import {randomBytes, randomUUID} from 'node:crypto';
 import type {FastifyInstance, FastifyReply, FastifyRequest} from 'fastify';
 import {Store,type Event} from './store.ts';
 import type {Live} from './state-delta.ts';
-import {Town, type HermesLink} from './engine.ts';
+import {Town, type HermesLink, type MemberBudgets} from './engine.ts';
+import {economyOn} from './config.ts';
+import {foundingCats} from './roles.ts';
 import {SeasonHost} from './season-host.ts';
 import {SeasonWatch, type CoinTotals} from './season-watch.ts';
 import {Workshop} from './workshop.ts';
@@ -107,7 +109,7 @@ function deletableFolder(dataDir: string, record: WorldRecord): string {
 }
 
 export type WorldServices = {dir: string; store: Store; town: Town; seasons: SeasonHost; feed: SeasonWatch; workshop: Workshop};
-export type WorldHostOptions = {root: string; dataDir: string; config: any; providers: Record<string, any>; now?: () => string; media?: () => MediaRuntime | null; claude?: () => ClaudeRuntime | null; townDefault?: () => TownDefault | null; realMoney?: RealMoney; connectors?: () => ConnectorRuntime | null; secrets?: () => unknown[]; hermes?: () => HermesLink | null};
+export type WorldHostOptions = {root: string; dataDir: string; config: any; providers: Record<string, any>; now?: () => string; media?: () => MediaRuntime | null; claude?: () => ClaudeRuntime | null; townDefault?: () => TownDefault | null; realMoney?: RealMoney; connectors?: () => ConnectorRuntime | null; secrets?: () => unknown[]; hermes?: () => HermesLink | null; personName?: (id: string) => string | undefined; members?: MemberBudgets};
 
 export class WorldHost {
   /** Store events of the active world only. Push reads these. */
@@ -316,9 +318,10 @@ export class WorldHost {
 
   private load(record: WorldRecord): WorldServices {
     const dir = resolveWorldDir(this.opts.dataDir, record.dir);
-    const store = new Store(join(dir, 'events.jsonl'), this.opts.config.cats, {readModel: join(dir, 'read-model.db')});
+    const store = new Store(join(dir, 'events.jsonl'), foundingCats(this.opts.config), {readModel: join(dir, 'read-model.db')});
     const town = new Town(store, this.opts.config, this.opts.providers);
-    town.economySummary = () => seasonSummary(dir);
+    // Off by default (economy.enabled): with the coin economy off, the Mayor's prompt carries no season summary.
+    if (economyOn(this.opts.config)) town.economySummary = () => seasonSummary(dir);
     town.autonomy = () => loadAutonomy(dir);
     town.media = this.opts.media ?? (() => null);
     town.claudePlan = this.opts.claude ?? (() => null);
@@ -332,6 +335,8 @@ export class WorldHost {
     town.connectors = this.opts.connectors;
     town.secrets = this.opts.secrets;
     town.hermes = this.opts.hermes;
+    town.personName = this.opts.personName;
+    town.members = this.opts.members;
     // Models stay global: the season child reads them from sharedDataDir, and everything else from its own world folder.
     const seasons = new SeasonHost({root: this.opts.root, dataDir: dir, defaultDays: this.opts.config.economy?.days, sharedDataDir: this.opts.dataDir});
     return {dir, store, town, seasons, feed: new SeasonWatch(dir), workshop: new Workshop({dataDir: dir, settingsDir: this.opts.dataDir})};

@@ -43,11 +43,14 @@
                 <data android:scheme="clowder" android:host="open" />
             </intent-filter>
 
-            <!-- Share a pairing link from another app into Clowder. -->
+            <!-- Share a pairing link, or a photo, video or text file (plan 11.22: it goes to the town's owner upload route). -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/json" />
             </intent-filter>
         </activity>
     </application>

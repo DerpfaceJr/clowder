@@ -1,10 +1,12 @@
 import {existsSync,readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {writeJsonAtomic} from './atomic-json.ts';
-import {ChannelPairing,answerTap,channelNotice,type TownLike} from './chat-channel.ts';
+import {ChannelPairing,ListNotices,answerTap,channelNotice,type TownLike} from './chat-channel.ts';
 import {dropSecrets,withSecrets,withoutSecrets} from './secret-store.ts';
 import type {Pairing} from './pairing.ts';
+import type {OwnerVerbs} from './owner-verbs.ts';
 import {clean} from './push.ts';
+import {ErrorClock,healthOf,type Health} from './health.ts';
 import type {State} from './store.ts';
 
 // Telegram channel (plan 3.5, D7): the official Bot API over plain fetch with long polling, so no public URL and no dependency. Owner only:
@@ -12,7 +14,9 @@ import type {State} from './store.ts';
 // ignored. The owner rule, notices and button answers are chat-channel.ts, shared with discord.ts; this module is the transport.
 export type BotApi=(method:string,body:Record<string,unknown>,signal?:AbortSignal)=>Promise<any>;
 type Saved={token:string;bot:string;chat?:number;device?:string;deviceToken?:string;offset?:number};
-export type TelegramOptions={dataDir:string;pairing:Pairing;town:()=>TownLike;mode:()=>string;api?:(token:string)=>BotApi;retryMs?:number;now?:()=>number};
+// remote: the remote address when one exists, so a notice links to /#item=<id>.
+// verbs: the owner verbs (11.25), so to-dos and failed requests get Mark done, Remind me tomorrow and Retry buttons.
+export type TelegramOptions={dataDir:string;pairing:Pairing;town:()=>TownLike;mode:()=>string;api?:(token:string)=>BotApi;retryMs?:number;now?:()=>number;remote?:()=>string|undefined;verbs?:OwnerVerbs};
 
 const POLL_SECONDS=25,MAX_TEXT=4000,SLOT='telegram',DEVICE='telegram';
 const cut=(text:string)=>text.length>MAX_TEXT?`${text.slice(0,MAX_TEXT-1)}…`:text;
@@ -35,9 +39,14 @@ export class TelegramChannel{
   private link:ChannelPairing;
   // ponytail: in memory, so a restart stops relaying the Mayor's replies to messages sent before it. Persist if that matters.
   private relayed=new Set<string>();
-  error:string|null=null;
+  private notices:ListNotices;
+  // Every `this.error=` below goes through the clock, so health() knows when the current error began (11.21).
+  private clock=new ErrorClock(()=>this.now());
+  get error(){return this.clock.error;}
+  set error(v:string|null){this.clock.set(v);}
   constructor(private o:TelegramOptions){
     this.link=new ChannelPairing(o.pairing,SLOT,'Telegram',()=>this.now());
+    this.notices=new ListNotices(()=>o.remote?.(),o.verbs);
     // A damaged file leaves Telegram off (the owner adds the token again) rather than stopping the server.
     try{const v=existsSync(this.file)?withSecrets(this.file,JSON.parse(readFileSync(this.file,'utf8'))):null;if(typeof v?.token==='string'){this.saved=v;this.api=(o.api??botApi)(v.token);}}
     catch{this.error='telegram.json could not be read. Add the bot token again.';}
@@ -50,6 +59,8 @@ export class TelegramChannel{
   /** The paired chat, while its device is still in Devices. */
   private chat():number|null{const s=this.saved;return s?.chat!==undefined&&this.link.listed(s.device)?s.chat:null;}
   status(){return {configured:!!this.saved,bot:this.saved?.bot??null,paired:this.chat()!==null,polling:!!this.abort,error:this.error};}
+  /** The integration contract (health.ts): off without a token, error while the last call failed. */
+  health():Health{return healthOf(!!this.saved,this.clock.error,this.clock.since);}
 
   /** Checks the token with getMe before keeping it. A new bot drops the old chat's pairing; a new token for the same bot keeps it. */
   async setToken(token:string){
@@ -108,14 +119,14 @@ export class TelegramChannel{
       const text=m.text.trim(),code=text.replace(/^\/start\s+/,'');
       if(this.link.wants(code)&&m.chat.id!==this.chat())return this.pairChat(m.chat.id,code);
       if(!this.owner(m.chat.id)||!text||text==='/start')return;
-      try{this.relayed.add(this.o.town().inbox(text,this.o.mode()));}
+      try{this.relayed.add(this.o.town().inbox(text,this.o.mode(),undefined,'Telegram'));}
       catch(err){await this.send(m.chat.id,`Not sent: ${(err as Error).message}`);}
       return;
     }
     if(q&&typeof q.id==='string'){
       const chat=q.message?.chat?.id;
       if(!this.owner(chat))return;
-      const r=answerTap(this.o.town(),q.data,DEVICE);
+      const r=answerTap(this.o.town(),q.data,DEVICE,this.o.verbs);
       if(r.ok)await this.api!('editMessageReplyMarkup',{chat_id:chat,message_id:q.message.message_id,reply_markup:{inline_keyboard:[]}}).catch(()=>undefined);
       await this.api!('answerCallbackQuery',{callback_query_id:q.id,text:r.reply});
     }
@@ -129,14 +140,16 @@ export class TelegramChannel{
   }
 
   /** Hooks the store like push.ts: listeners get no arguments, so the newest event is read from the state. */
-  attach(source:{readonly state:State;listeners:Set<()=>void>}){source.listeners.add(()=>this.onStore(source.state));}
+  attach(source:{readonly state:State;listeners:Set<()=>void>}){this.notices.baseline(source.state);source.listeners.add(()=>this.onStore(source.state));}
   onStore(state:State){
+    // 11.10: decisions and to-dos that just joined the Needs-you list, each once.
+    const chat=this.chat(),fresh=this.notices.fresh(state);
+    if(chat!==null)for(const out of fresh)void this.send(chat,out.text,out.buttons.length?{inline_keyboard:[out.buttons.map(b=>({text:b.label,callback_data:b.data}))]}:undefined);
     const event=state.events.at(-1);
     if(!event||event.id===this.lastEventId)return;
     this.lastEventId=event.id;
-    const chat=this.chat();if(chat===null)return;
-    const out=channelNotice(event,state,this.relayed);if(!out)return;
-    void this.send(chat,out.text,out.buttons.length?{inline_keyboard:[out.buttons.map(b=>({text:b.label,callback_data:b.data}))]}:undefined);
+    const out=channelNotice(event,this.relayed);
+    if(out&&chat!==null)void this.send(chat,out.text);
   }
   // No parse_mode: model-written text is sent as plain text, so it cannot add links or formatting.
   private async send(chat:number,text:string,markup?:object){

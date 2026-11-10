@@ -2,9 +2,11 @@ import {existsSync,readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {writeJsonAtomic} from './atomic-json.ts';
 import {dropSecrets,withSecrets,withoutSecrets} from './secret-store.ts';
-import {ChannelPairing,answerTap,channelNotice,type ChatButton,type TownLike} from './chat-channel.ts';
+import {ChannelPairing,ListNotices,answerTap,channelNotice,type ChatButton,type TownLike} from './chat-channel.ts';
 import type {Pairing} from './pairing.ts';
+import type {OwnerVerbs} from './owner-verbs.ts';
 import {clean} from './push.ts';
+import {ErrorClock,healthOf,type Health} from './health.ts';
 import type {State} from './store.ts';
 
 // Discord channel (plan 3.5, D7): the official API with no dependency and no public URL. Messages and button taps arrive over the Gateway
@@ -14,7 +16,8 @@ import type {State} from './store.ts';
 export type Rest=(method:'GET'|'POST',path:string,body?:unknown)=>Promise<any>;
 export type Sock={send(data:string):void;close(code?:number):void;onmessage:((e:{data:unknown})=>void)|null;onclose:((e:{code:number})=>void)|null;onerror:((e:unknown)=>void)|null};
 type Saved={token:string;bot:string;botId:string;user?:string;channel?:string;device?:string;deviceToken?:string};
-export type DiscordOptions={dataDir:string;pairing:Pairing;town:()=>TownLike;mode:()=>string;rest?:(token:string)=>Rest;socket?:(url:string)=>Sock;retryMs?:number;now?:()=>number};
+// verbs: the owner verbs (11.25), as in telegram.ts.
+export type DiscordOptions={dataDir:string;pairing:Pairing;town:()=>TownLike;mode:()=>string;remote?:()=>string|undefined;rest?:(token:string)=>Rest;socket?:(url:string)=>Sock;retryMs?:number;now?:()=>number;verbs?:OwnerVerbs};
 
 const API='https://discord.com/api/v10',GATEWAY='wss://gateway.discord.gg',QUERY='/?v=10&encoding=json';
 // DIRECT_MESSAGES only: a DM's text needs no privileged Message Content intent, and button taps (interactions) need no intent at all.
@@ -53,9 +56,14 @@ export class DiscordChannel{
   private link:ChannelPairing;
   // ponytail: in memory, as in telegram.ts, so a restart stops relaying the Mayor's replies to messages sent before it.
   private relayed=new Set<string>();
-  error:string|null=null;
+  private notices:ListNotices;
+  // Every `this.error=` below goes through the clock, so health() knows when the current error began (11.21).
+  private clock=new ErrorClock(()=>this.now());
+  get error(){return this.clock.error;}
+  set error(v:string|null){this.clock.set(v);}
   constructor(private o:DiscordOptions){
     this.link=new ChannelPairing(o.pairing,SLOT,'Discord',()=>this.now());
+    this.notices=new ListNotices(()=>o.remote?.(),o.verbs);
     // A damaged file leaves Discord off (the owner adds the token again) rather than stopping the server.
     try{const v=existsSync(this.file)?withSecrets(this.file,JSON.parse(readFileSync(this.file,'utf8'))):null;if(typeof v?.token==='string'){this.saved=v;this.rest=(o.rest??restApi)(v.token);}}
     catch{this.error='discord.json could not be read. Add the bot token again.';}
@@ -69,6 +77,8 @@ export class DiscordChannel{
   /** The paired DM channel, while its device is still in Devices. */
   private dm():string|null{const s=this.saved;return s?.channel&&this.link.listed(s.device)?s.channel:null;}
   status(){return {configured:!!this.saved,bot:this.saved?.bot??null,paired:this.dm()!==null,connected:this.connected,error:this.error};}
+  /** The integration contract (health.ts): off without a token, error while the last call or the Gateway failed. */
+  health():Health{return healthOf(!!this.saved,this.clock.error,this.clock.since);}
 
   /** Checks the token with /users/@me before keeping it. A new bot drops the old DM's pairing; a new token for the same bot keeps it. */
   async setToken(token:string){
@@ -154,13 +164,13 @@ export class DiscordChannel{
     const text=d.content.trim(),user=String(d.author.id),channel=String(d.channel_id);
     if(this.link.wants(text)&&!this.owner(user,channel))return this.pairDm(user,channel,text);
     if(!this.owner(user,channel)||!text)return;
-    try{this.relayed.add(this.o.town().inbox(text,this.o.mode()));}
+    try{this.relayed.add(this.o.town().inbox(text,this.o.mode(),undefined,'Discord'));}
     catch(err){await this.send(channel,`Not sent: ${(err as Error).message}`);}
   }
   /** A button tap. Only a component tap from the owner in the paired DM is answered; any other gets nothing, as a stranger's message gets nothing. */
   private async tap(d:any){
     if(d?.type!==3||d.guild_id!=null||!ID.test(String(d.id))||!/^[\w.-]{1,500}$/.test(String(d.token))||!this.owner(String(d.user?.id),String(d.channel_id??d.channel?.id)))return;
-    const r=answerTap(this.o.town(),d.data?.custom_id,DEVICE);
+    const r=answerTap(this.o.town(),d.data?.custom_id,DEVICE,this.o.verbs);
     // Answered: the buttons go and the answer is added under the notice. Not answered: a reply only the owner sees, and the buttons stay.
     const reply=r.ok?{type:7,data:{content:cut(`${String(d.message?.content??'')}\n\n${plain(r.reply)}`),components:[],allowed_mentions:{parse:[]}}}:{type:4,data:{content:plain(r.reply),flags:64,allowed_mentions:{parse:[]}}};
     try{await this.rest?.('POST',`/interactions/${d.id}/${d.token}/callback`,reply);}catch(err){this.error=(err as Error).message;}
@@ -174,13 +184,16 @@ export class DiscordChannel{
   }
 
   /** Hooks the store like push.ts: listeners get no arguments, so the newest event is read from the state. */
-  attach(source:{readonly state:State;listeners:Set<()=>void>}){source.listeners.add(()=>this.onStore(source.state));}
+  attach(source:{readonly state:State;listeners:Set<()=>void>}){this.notices.baseline(source.state);source.listeners.add(()=>this.onStore(source.state));}
   onStore(state:State){
+    // 11.10: decisions and to-dos that just joined the Needs-you list, each once.
+    const channel=this.dm(),fresh=this.notices.fresh(state);
+    if(channel!==null)for(const out of fresh)void this.send(channel,out.text,out.buttons);
     const event=state.events.at(-1);
     if(!event||event.id===this.lastEventId)return;
     this.lastEventId=event.id;
-    const channel=this.dm();if(channel===null)return;
-    const out=channelNotice(event,state,this.relayed);if(out)void this.send(channel,out.text,out.buttons);
+    const out=channelNotice(event,this.relayed);
+    if(out&&channel!==null)void this.send(channel,out.text);
   }
   // No mentions are parsed, so model-written text cannot ping anyone.
   private async send(channel:string,text:string,buttons:ChatButton[]=[]){

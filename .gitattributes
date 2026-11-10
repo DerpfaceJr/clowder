@@ -1,5 +1,6 @@
 * text=auto
 *.glb binary
 *.png binary
+*.apk binary
 *.cmd text eol=crlf
 test/fixtures/golden/* -text

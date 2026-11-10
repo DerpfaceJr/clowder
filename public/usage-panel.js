@@ -1,12 +1,11 @@
 // Usage (plan 3.10): the tokens the town used this month and last, per day, cat, model, goal and routine, and the town-wide monthly cap.
-// ☰ > Usage opens this panel. It reads GET /api/usage (open to every device that can see the town) and sets the cap with the owner's
+// It lives in the Moonvault, Money's Usage tab (docs/design/menu-chat-mailman.md): the Money pill, the Banker's corner, Options > Manage
+// and the palette open it there. It reads GET /api/usage (open to every device that can see the town) and sets the cap with the owner's
 // POST /api/usage/cap {tokens} (null removes it). Counts are what providers reported: a call without a count adds nothing, so every
 // total is a floor. Cost is a sum only when every call carried one; otherwise it reads Unknown, never 0. Days are the host computer's
 // calendar. The pure helpers are exported for Node tests; the DOM is built with createElement and textContent only.
 import {formatTokens} from './treasury-view.js';
-import {registerSettingsSection} from './settings-menu.js';
 import {ensureStyles, h, msgNode, ownerDialog, readJson, sendJson} from './owner-dialog.js';
-import {icon} from './icons.js';
 
 export const MODE_LABELS = {demo: 'Demonstration', local: 'Local AI', hosted: 'API key', claude: 'Claude plan', plan: 'Claude plan', chatgpt: 'ChatGPT plan', anthropic: 'Anthropic API', hermes: 'Hermes'};
 export const CAP_DENIED = 'The token cap is set on the host computer or an owner device.';
@@ -69,7 +68,7 @@ export function capLine(cap, locale) {
   return {text: base, fill, tone: fill >= 0.8 ? 'warn' : 'ok'};
 }
 
-/** The ☰ row's subtitle. */
+/** A one-line summary of this month's tokens. */
 export function rowSummary(data) {
   if (!data?.cap) return 'Tokens by day, cat and model';
   const used = formatTokens(num(data.cap.used));
@@ -81,17 +80,24 @@ export function todayIn(zone, now = Date.now()) {
   try { return new Intl.DateTimeFormat('en-CA', {timeZone: zone || undefined, year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date(now)); } catch { return new Date(now).toISOString().slice(0, 10); }
 }
 
-/** The Usage dialog. town() gives cat and goal names. Returns {open, close, refresh, probe, summary, dialog}. */
-export function createUsagePanel({doc = document, win = globalThis.window, fetchImpl = (...args) => fetch(...args), town = () => null, now = () => Date.now(), locale} = {}) {
+/**
+ * The Usage panel. town() gives cat and goal names. Returns {open, load, close, refresh, probe, summary, dialog}. Alone it is its own
+ * dialog. mount: {dialog, body, lede, show(), showing()} draws it into another panel instead (the Moonvault's Usage tab): show() opens
+ * that panel on it, showing() says whether it is on screen, and the host calls load() when it shows.
+ */
+export function createUsagePanel({doc = document, win = globalThis.window, fetchImpl = (...args) => fetch(...args), town = () => null, now = () => Date.now(), locale, mount = null} = {}) {
   ensureStyles(doc, 'usage-panel.css', 'usage-panel');
+  if (mount) ensureStyles(doc, 'owner-panels.css', 'owner-panels');
   // capText: what the owner typed in the cap field, so a repaint never wipes it. key: what the last paint showed.
   const ui = {data: null, loaded: false, denied: false, which: 'current', msg: null, capMsg: null, capText: null, busy: '', routines: new Map(), pick: null, key: ''};
   let townTimer = 0;
-  const shell = ownerDialog({doc, id: 'usage-dialog', eyebrow: 'TOKENS', title: 'Usage', size: 'wide',
-    onClose: () => { clearTimeout(townTimer); townTimer = 0; ui.msg = null; ui.capMsg = null; ui.capText = null; ui.pick = null; ui.key = ''; }});
+  const reset = () => { clearTimeout(townTimer); townTimer = 0; ui.msg = null; ui.capMsg = null; ui.capText = null; ui.pick = null; ui.key = ''; };
+  const shell = mount ?? ownerDialog({doc, id: 'usage-dialog', eyebrow: 'TOKENS', title: 'Usage', size: 'wide', onClose: reset});
+  if (mount) mount.dialog?.addEventListener?.('close', reset);
   const {dialog, body, lede} = shell;
+  const showing = () => !!dialog?.open && (!mount || mount.showing());
   win?.addEventListener?.('town-state', () => {
-    if (!dialog.open || townTimer) return;
+    if (!showing() || townTimer) return;
     townTimer = setTimeout(() => { townTimer = 0; void refresh(); }, 2000);
   });
 
@@ -262,27 +268,27 @@ export function createUsagePanel({doc = document, win = globalThis.window, fetch
     if (focusKey) [...body.querySelectorAll('[data-key]')].find(n => n.dataset.key === focusKey && !n.disabled)?.focus();
   }
 
-  async function open() {
-    if (!dialog.open) dialog.showModal();
+  // Paints what it has, then reads this month and the routine names again.
+  async function load() {
     paint();
     await Promise.all([refresh(), loadRoutines()]);
     paint();
   }
+  async function open() {
+    if (mount) { mount.show(); return; }
+    if (!dialog.open) dialog.showModal();
+    await load();
+  }
   async function probe() { await refresh(); return !ui.denied && !!ui.data; }
-  return {open, close: () => dialog.close(), refresh, probe, summary: () => rowSummary(ui.data), dialog};
+  return {open, load, close: () => dialog.close(), refresh, probe, summary: () => rowSummary(ui.data), dialog};
 }
 
-/** ☰ > Usage: a top-level row that opens the panel. The read is open to every device that sees the town; the cap form is the owner's. */
+/**
+ * Usage joins Money in the Moonvault (docs/design/menu-chat-mailman.md); app.js passes the Usage tab as mount. The read is open to every
+ * device that sees the town, the cap form is the owner's. ready resolves true once the read answers. Called once by app.js.
+ */
 export function initUsagePanel(options = {}) {
   const panel = createUsagePanel(options);
-  let fallback = null;
-  registerSettingsSection('usage', 'Usage', container => {
-    fallback = h('button', {text: 'Usage…', attrs: {type: 'button', id: 'usage-open', 'aria-haspopup': 'dialog'}});
-    fallback.hidden = true;
-    fallback.onclick = () => void panel.open();
-    container.append(fallback);
-  }, {icon: icon('cpu', {size: 18}), summary: panel.summary, action: () => void panel.open()});
-  void panel.probe().then(ok => { if (fallback) fallback.hidden = !ok; });
-  (options.doc ?? document).getElementById('menu-toggle')?.addEventListener('click', () => void panel.refresh());
+  panel.ready = panel.probe().catch(() => false);
   return panel;
 }

@@ -45,7 +45,7 @@ test('Allow on a private-write notification resolves the approval with the paire
     const payload=payloads()[0]!;
     assert.equal(payload.approval,approval.id);
     assert.deepEqual(payload.actions?.map(a=>[a.title,a.answer,a.approved]),[['Allow once','Allow once',true],['Deny','Deny',false]],'Allow and Deny only, never Always allow');
-    assert.equal(payload.url,`/#approval=${approval.id}`);
+    assert.equal(payload.url,`/#item=approval%3A${approval.id}`);
 
     // The tap: the worker builds the request from the payload alone.
     const request=answerFor({url:payload.url,approval:payload.approval,actions:payload.actions},'0');
@@ -78,7 +78,7 @@ test('a publish notification carries no action buttons and opens its card',async
     await until(()=>payloads().length===1);
     const payload=payloads()[0]!;
     assert.equal(payload.actions,undefined);assert.equal(payload.approval,undefined);
-    assert.equal(payload.url,`/#approval=${approval.id}`);
+    assert.equal(payload.url,`/#item=approval%3A${approval.id}`);
     assert.equal(answerFor(payload,'0'),null);
   }finally{service.close();await desk.close();}
 });
@@ -96,7 +96,7 @@ test('push status tells a device whether it is subscribed',async()=>{
   const {service}=await pushed();
   const app=Fastify();registerPushRoutes(app,{service,allowed:()=>true,device:req=>String(req.headers['x-device'])});
   await app.ready();
-  assert.deepEqual((await app.inject({url:'/api/push/status',headers:{'x-device':'phone'}})).json(),{subscribed:true,kinds:{approvals:true,mayor:true,seasons:true,routines:true}});
+  assert.deepEqual((await app.inject({url:'/api/push/status',headers:{'x-device':'phone'}})).json(),{subscribed:true,kinds:{approvals:true,mayor:true,seasons:true,routines:true,problems:true}});
   assert.equal((await app.inject({url:'/api/push/status?endpoint=https://fcm.googleapis.com/fcm/send/other',headers:{'x-device':'phone'}})).json().endpoint,false);
   assert.deepEqual((await app.inject({url:'/api/push/status',headers:{'x-device':'tablet'}})).json(),{subscribed:false,kinds:null});
   await app.close();service.close();

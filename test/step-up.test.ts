@@ -8,6 +8,7 @@ import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Pairing,type RemoteConfig} from '../src/pairing.ts';
+import {People} from '../src/people.ts';
 import {ALLOW_MS,CHALLENGE_MS,NEEDS_ALLOW,NEEDS_STABLE,STEP_UP_COOKIE,STEP_UP_MS,installRemoteAccess,isSteppedUp} from '../src/remote-access.ts';
 import {readCbor,verifyAssertion} from '../src/webauthn.ts';
 
@@ -132,6 +133,26 @@ test('adding a passkey needs the host to allow it for that owner device, within 
     assert.equal((await t.post(owner.cookie,'/api/step-up/register/options')).statusCode,409,'the window closes once a passkey is added');
     // The saved record loads again.
     assert.equal(new Pairing(join(t.dir,'devices.json'),config,()=>t.clock.now).passkey(owner.id)?.id,b64(auth.id));
+  }finally{await t.app.close();}
+});
+
+test('a member device may add a passkey on a stable address (plan 10.4), but confirming with one is the owner\'s: a member is never stepped up',async()=>{
+  const t=await town();
+  try{
+    const people=new People(join(t.dir,'people.json'),t.pairing),mia=people.add('Mia','member');
+    const {token,device}=t.pairing.pair(people.invite(mia.id).code,'Mia phone'),member={id:device.id,cookie:`__Host-town_device=${token}`};
+    assert.deepEqual((await t.get(member.cookie,'/api/step-up')).json(),{available:true,passkey:false,canAdd:false,until:null,minutes:STEP_UP_MS/60_000});
+    assert.equal((await t.post(member.cookie,'/api/step-up/register/options')).statusCode,409,'the host allows it first');
+    t.remote.stepUp.allow(member.id);
+    const auth=new Authenticator();
+    assert.equal((await t.enrol(member.cookie,auth)).statusCode,200);
+    assert.equal(t.pairing.list().find(d=>d.id===member.id)?.passkey?.rpId,'pc-name.tail1234.ts.net');
+    assert.equal(new Pairing(join(t.dir,'devices.json'),config,()=>t.clock.now).passkey(member.id)?.id,b64(auth.id),'kept on load, as an owner device\'s is');
+    for(const [url,body] of [['/api/step-up/options',{}],['/api/step-up',auth.get({challenge:'x',rpId:'pc-name.tail1234.ts.net'})]] as const)
+      assert.equal((await t.post(member.cookie,url,body)).statusCode,403,url);
+    assert.equal(await t.settings(member.cookie),403,'the host-only setting stays shut');
+    t.place.origin=QUICK;t.place.stable=false;
+    assert.deepEqual((await t.get(member.cookie,'/api/step-up')).json(),{available:false},'no option on a Quick Tunnel');
   }finally{await t.app.close();}
 });
 

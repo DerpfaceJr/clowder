@@ -92,6 +92,12 @@ export function stopCli(child:ChildProcessWithoutNullStreams){
 
 export type CliResult={stdout:string;stderr:string;code:number|null};
 // Rejects with code (e.g. ENOENT) when the executable cannot be started.
+/**
+ * Removes a call's own temp folder after its CLI has ended or been killed. On Windows a folder a dying process still holds answers EBUSY
+ * or EPERM for a moment, so it is tried again (3 times, 100 ms apart, then 200 and 300: Node's linear backoff); a folder that still will not
+ * go is left behind. It never throws: thrown from a finally, a cleanup error would replace the call's own result or its own error.
+ */
+export function removeCallDir(dir:string){try{rmSync(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}catch{/* left for the next cleanup of the workdir */}}
 export function runCli(exe:string,args:string[],input:string,cwd:string,timeoutMs:number,signal:AbortSignal,opts:{label:string;dropEnv:string[];keepEnv?:string[]}):Promise<CliResult>{
   const child=spawnCli(exe,args,{cwd,dropEnv:opts.dropEnv,keepEnv:opts.keepEnv});
   return new Promise((resolve,reject)=>{

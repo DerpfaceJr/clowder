@@ -15,6 +15,9 @@ const LABELS:Record<string,string>={delegate:'asking a cat',appoint_director:'ap
   request_approval:'asking you',request_owner_step:'adding a to-do',remember:'noting a fact',use_skill:'reading a skill',find_skills:'finding skills'};
 export const toolLabel=(name:string)=>LABELS[name]??`using ${name.replace(/^mcp__/,'').replace(/[_-]+/g,' ').trim()||'a tool'}`;
 export type Live={activity:{task:string;cat:string;label:string}}|{delta:{task:string;cat:string;text?:string;done?:true}};
+type Send=(data:string)=>void;
+/** One person with a page open (plan 10.10, §4.6): the person, never the device or its token. */
+export type Present={id:string;name:string;role:string};
 
 export class DeltaFeed{
   readonly clients=new Set<(data:string)=>void>();
@@ -47,6 +50,25 @@ export class DeltaFeed{
     const approval=/^approval\.(requested|resolved)$/.test(e.type)?findLast(s.approvals,a=>a.id===id):undefined;
     return {seq:s.events.length,world:this.source.activeWorld().id,...(FEED_EVENTS.has(e.type)?{event:publicEvent(e)}:{}),
       ...(message?{message}:{}),...(task?{task:publicTask(task)}:{}),...(approval?{approval:publicApproval(approval)}:{}),...(Object.keys(patch).length?{patch}:{})};
+  }
+  // Presence (plan 10.10): who has a page stream open now, by person. Transient like activity, never journaled, outside small() and the snapshot.
+  // A frame is {presence:[...]} with no seq: the owner's lists {id,name,role}, everyone else's {name,role}. It goes out when the set of people
+  // changes; a page that joins a set already holding its person gets the current list alone. Two pages of one person are one entry.
+  private present=new Map<Send,Present>();
+  join(send:Send,person:Present){
+    const changed=!this.people().some(p=>p.id===person.id);
+    this.present.set(send,person);
+    if(changed)this.presence(this.clients);else this.presence([send]);
+  }
+  leave(send:Send){
+    const person=this.present.get(send);if(!person)return;
+    this.present.delete(send);
+    if(!this.people().some(p=>p.id===person.id))this.presence(this.clients);
+  }
+  private people(){return [...new Map([...this.present.values()].map(p=>[p.id,p])).values()];}
+  private presence(to:Iterable<Send>){
+    const full=this.people(),owner=JSON.stringify({presence:full}),other=JSON.stringify({presence:full.map(({name,role})=>({name,role}))});
+    for(const send of to)if(this.clients.has(send))send(this.owners.has(send)?owner:other);
   }
   private fan(data:string){for(const send of this.clients)send(data);}
 }

@@ -21,7 +21,7 @@ const clock=()=>{
 };
 const ntfyAt=(d:string,c=clock())=>({ntfy:new NtfyService({dataDir:d,server:RELAY,send:fakeSender,now:c.now,later:c.later,stopTimer:c.stopTimer}),c});
 const topicOf=(url:string)=>url.slice(`${RELAY}/`.length);
-const DECISION={events:[{id:'ev-1',type:'approval.requested',data:{id:'appr-7',cat:'mabel',status:'pending',question:'Buy 40 fish for the Mayor?',options:['Allow','Deny'],gate:'connector',effectClass:'write'}}],cats:[{id:'mabel',name:'Mabel'}]};
+const DECISION={events:[{id:'ev-1',type:'approval.requested',data:{id:'appr-7',cat:'mabel',status:'pending',question:'Buy 40 fish for the Mayor?',options:['Allow','Deny'],gate:'connector',effectClass:'write'}}],cats:[{id:'mabel',name:'Mabel'}],goals:[],councils:[],ownerSteps:[],retiredCats:[],approvals:[{id:'appr-7',cat:'mabel',status:'pending',question:'Buy 40 fish for the Mayor?',options:['Allow','Deny'],gate:'connector',effectClass:'write'}]};
 
 test('ntfy is off by default: a notice sends nothing and no status is enabled', async()=>{
   calls=[];const d=dir();

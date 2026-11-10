@@ -1,4 +1,4 @@
-import {oneLiner} from './hologram.js';
+import {oneLiner} from './one-liner.js';
 
 // The Cats list as groups. Pure: plain state in, plain data out, so the test runs the code the page runs.
 // A director is a cat with `directs` (the project key: a goal id, or a request's root task id). Each director leads one

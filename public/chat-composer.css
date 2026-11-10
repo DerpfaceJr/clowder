@@ -1,0 +1,75 @@
+/* The composer (plan 8.7, chat-composer.js): the thread switcher and its list, the note above the text box, and the "/" and "@"
+   list (slash-commands.js). chat-composer.js links this file after the page's own stylesheets. Colours, sizes, radii and
+   shadows are the style.css :root tokens only. */
+
+/* The columns: one auto column for each small control shown ([Threads] [Attach] [Options]), then the text box and Send's 44px.
+   A hidden control gives up its column. Without an option to offer, the chip hides. */
+.immersive .inspector #chat-form:has(> .thread-switch:not([hidden])){grid-template-columns:auto auto minmax(0,1fr) 44px}
+.immersive .inspector #chat-form:has(> .thread-switch:not([hidden])):has(> #composer-options[hidden]){grid-template-columns:auto minmax(0,1fr) 44px}
+/* Attach is the owner's (plan 11.26): it takes the switcher's button rule and one more column. */
+.immersive .inspector #chat-form:has(> .composer-attach:not([hidden])){grid-template-columns:auto auto auto minmax(0,1fr) 44px}
+.immersive .inspector #chat-form:has(> .composer-attach:not([hidden])):has(> #composer-options[hidden]){grid-template-columns:auto auto minmax(0,1fr) 44px}
+
+/* The rows (docs/ux-ui-improvements.md row 2). With every control on one row the text box was 104.8px of a 360px form at 1024x768
+   and 127.8px of 375px at 375x812. So where the form is narrow the text box gets a row of its own with Send, and the small controls
+   sit on a row above it:
+   - from 900px (the side pane, a 360 to 440px form): always. The text box is 290px of 360px at 1024x768, 80.6%.
+   - under 600px (a phone's sheet): once the box holds text. The text box is 309px of 375px at 375x812, 82.4%. An empty box stays on
+     the one row (127.8px): the second row costs 48px there, and Gate 11 (docs/product-plan.md) keeps the conversation at half the
+     pane at 375x812 with one decision, where it has 284 of 552px, 8px to spare.
+   - 600 to 899px (a sheet as wide as the window): one row, as before. The text box is 344.8px at 600 and 643.8px at 899.
+   Two rows use the same columns: the text box spans every column but Send's, so it cannot share the small controls' row and takes
+   the next one. With all three small controls hidden it is on the first row, so the composer is one row again. The small row is
+   above, not under: the DOM order stays Threads, Attach, Options, text box, Send, so Tab follows the screen, and on a phone the
+   text box stays next to the keyboard. The rows follow the text, never focus, like the box's height (chat-sheet.js fitComposer).
+   From 900px the pane cannot scroll, so the second row must not push the composer past its foot. With the setup card, the brain
+   card and the decision strip showing, the conversation had 40px above its 96px floor at 1024x768 (one working line) and 36px at
+   1280x820 (two working lines). The two-row composer there drops its 6px bottom margin and uses 4px block padding and a 2px row
+   gap: 100px against 58px plus the margin before, 36px more, so both states still fit.
+   Every figure: getBoundingClientRect in headless Chromium on a scratch server, n=1 each, measured 2026-11-10. */
+@media(min-width:900px){
+  .immersive .inspector #chat-form{margin-bottom:0;padding-block:4px;row-gap:2px}
+  .immersive .inspector #chat-form>#message{grid-column:1/-2}
+  .immersive .inspector #chat-form>div:has(> #send){grid-column:-2/-1}
+}
+@media(max-width:599px){
+  .immersive .inspector #chat-form>#message:not(:placeholder-shown){grid-column:1/-2}
+  .immersive .inspector #chat-form>#message:not(:placeholder-shown)~div:has(> #send){grid-column:-2/-1}
+}
+
+.thread-switch{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:1px;width:var(--tap);height:var(--tap);min-height:var(--tap);padding:0;border:0;border-radius:var(--radius-control);background:var(--paper-2);color:var(--ink-2)}
+.thread-switch[hidden]{display:none}
+.thread-switch svg{flex:none;pointer-events:none}
+.thread-switch[aria-expanded=true]{background:color-mix(in srgb,var(--accent) 14%,var(--paper));color:var(--accent-strong)}
+@media(hover:hover){.thread-switch:hover{background:color-mix(in srgb,var(--ink) 8%,var(--paper-2));color:var(--ink)}}
+.thread-switch-count{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:var(--r-pill);background:var(--needs);color:var(--needs-ink);font:700 var(--text-xs)/16px var(--font-ui);text-align:center;box-shadow:var(--e1)}
+.thread-switch-count[hidden]{display:none}
+
+/* The thread list: a popover above the composer, over the conversation, so nothing below it moves. */
+.immersive .inspector #chat-form>.thread-list{position:absolute;left:0;right:0;bottom:calc(100% + var(--space-2));z-index:4;max-height:min(360px,55dvh);overflow-y:auto;margin:0;padding:var(--space-2);list-style:none;border-radius:var(--r-md);background:var(--paper);box-shadow:var(--e3)}
+.immersive .inspector #chat-form>.thread-list[hidden]{display:none}
+.thread-list ul{margin:0;padding:0;list-style:none}
+.thread-group{margin-top:var(--space-2)}
+.thread-group-label{display:block;padding:var(--space-1) var(--space-3);font-size:var(--text-xs);font-weight:600;color:var(--ink-2)}
+.thread-list .thread-option{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--tap);padding:0 var(--space-3);border:0;border-radius:var(--r-sm);background:none;color:var(--ink);font-size:var(--text-sm);text-align:left}
+.thread-option-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread-option-meta{flex:none;font-size:var(--text-xs);color:var(--ink-2)}
+.thread-option svg{flex:none}
+.thread-list .thread-option[aria-current=true]{background:color-mix(in srgb,var(--accent) 12%,var(--paper));color:var(--accent-strong);font-weight:600}
+@media(hover:hover){.thread-list .thread-option:hover{background:var(--paper-2)}}
+
+/* Why Enter did nothing: a note over the foot of the conversation, never a row that pushes the decision strip up. */
+.immersive .inspector #chat-form>.composer-note{position:absolute;left:var(--space-2);right:var(--space-2);bottom:calc(100% + var(--space-2));z-index:4;margin:0;padding:var(--space-2) var(--space-3);border-radius:var(--r-sm);background:var(--needs);color:var(--needs-ink);font-size:var(--text-sm);line-height:1.4;box-shadow:var(--e2)}
+.immersive .inspector #chat-form>.composer-note[hidden]{display:none}
+
+/* The "/" and "@" list on the tokens: built-ins and plugin commands, or the cats. It opens on the text box itself, over the small
+   controls' row when there is one. Without anchor positioning it opens above the whole composer, as before. */
+@supports(anchor-name:--a){
+  .immersive .inspector #chat-form>#message{anchor-name:--composer-box}
+  .immersive .inspector #chat-form>.slash-list{position-anchor:--composer-box;bottom:anchor(top)}
+}
+#chat-form .slash-list{border-color:var(--line);border-radius:var(--r-md);background:var(--paper);color:var(--ink);box-shadow:var(--e3)}
+#chat-form .slash-item[aria-selected=true]{background:color-mix(in srgb,var(--accent) 14%,var(--paper))}
+#chat-form .slash-name,#chat-form .mention-name{color:var(--accent-strong)}
+#chat-form .mention-name{font-weight:600}
+#chat-form :is(.slash-hint,.slash-desc){color:var(--ink-2)}

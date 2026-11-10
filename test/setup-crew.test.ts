@@ -7,14 +7,15 @@ import {Store} from '../src/store.ts';
 import {Town} from '../src/engine.ts';
 import {buildMemory,lookup} from '../src/memory.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
-// A clean world: the shipped config, founded with the Mayor alone.
+// A clean world: the shipped config, founded with the Mayor (the Town brings in the founder Mailman on load).
 const config={...JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8')),maxParallelWork:3};
 const fixture=(provider:Provider)=>{
   const store=new Store(join(mkdtempSync(join(tmpdir(),'crew-')),'events.jsonl'),config.cats);
   return {store,town:new Town(store,config,{test:provider})};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,5));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(5);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 const last=(messages:any[])=>String(messages.at(-1)?.content??'');
@@ -22,7 +23,7 @@ const RESULT='We picked the cosy-reading niche because three rivals post daily a
 
 test('the first message to the Mayor brings in the setup crew, once, and a retired member stays retired', async () => {
   const {store,town}=fixture(async()=>reply(RESULT));
-  assert.deepEqual(store.state.cats.map(c=>c.id),['mayor']);
+  assert.deepEqual(store.state.cats.map(c=>c.id),['mayor','mailman']);
   town.submit('mayor','Start an Instagram','test');
   for(const id of config.setupCrew)assert.ok(store.state.cats.some(c=>c.id===id),`${id} joined`);
   const count=store.state.cats.length;

@@ -1,5 +1,7 @@
 # Economy spec (v1: in-world coins)
 
+> Off by default since 2026-11-09. The app shows no season panel, starts no seasons and gives the Mayor no economy summary unless `economy.enabled` is `true` (set it in `town.local.json`, then restart). The command-line runner, the journals and this engine are unchanged.
+
 ## Goal
 
 All cats share one coin pot and try to grow it. The roster is every cat in `town.config.json` plus any recruits. Cats invent any business they want and run it without owner approval. The owner steers only by talking to the Mayor.

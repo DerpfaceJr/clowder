@@ -6,6 +6,8 @@ One app that stays connected to your town. Pair it once; after the computer rest
 
 Run `npm run android`. It writes `dist-android/Clowder.apk`. It uses the Android SDK and JDK that ship with Unity's Android module, or `ANDROID_HOME` if set. No Gradle and no downloads.
 
+The APK is tracked in git, so the desktop installer and every release ship it. After a change under `android/`, run the build and commit the new `dist-android/Clowder.apk`; a test fails while the tracked APK is older than `android/`.
+
 The signing key lives outside the repo at `%APPDATA%\Clowder\android`. Back it up. Every update must use the same key, or Android refuses to install over the old app.
 
 ## Install
@@ -44,10 +46,10 @@ If the town cannot be reached, Clowder shows a message with a paste field and a 
 The WebView has no Web Push, so the phone gets no notification from Clowder on its own. A ping channel fills the gap: when Clowder would send a notification (a decision, the Mayor, a finished season), it posts one fixed line, "Clowder needs you — open the app", to a private ntfy topic. Tapping it opens Clowder. The ping never carries the question, a cat's name or any town data.
 
 1. Install the ntfy app on the phone (Play Store or F-Droid).
-2. On the computer, enable the ping for the paired device: `POST /api/ntfy/devices/<device id>/enable` as the owner (the device id is in `GET /api/ntfy`). The response has the subscribe address, `https://ntfy.sh/clowder-…`.
+2. On the computer, open **Post office > Channels > Android ping** and turn the phone on. Clowder shows that phone's subscribe address, `https://ntfy.sh/clowder-…`. (The same switch is `POST /api/ntfy/devices/<device id>/enable` as the owner.)
 3. In the ntfy app, subscribe to that address. Allow its notifications.
 
-Revoking the device, or calling `POST /api/ntfy/devices/<device id>/disable`, deletes the topic, and the pings stop. The topic is secret: anyone who learns it can ping the phone, but cannot read anything. At most one ping a minute reaches a device. The server is `ntfy.server` in `town.config.json` (https://ntfy.sh by default); a self-hosted ntfy goes there.
+Revoking the device, or turning it off in Android ping (`POST /api/ntfy/devices/<device id>/disable`), deletes the topic, and the pings stop. The topic is secret: anyone who learns it can ping the phone, but cannot read anything. At most one ping a minute reaches a device. The server is `ntfy.server` in `town.config.json` (https://ntfy.sh by default); a self-hosted ntfy goes there.
 
 Manual check: enable, approve or wait for any notice, and confirm one ping arrives and that tapping it opens Clowder.
 

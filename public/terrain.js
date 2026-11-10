@@ -73,7 +73,20 @@ export function terrain(P){
     const n=noise2(x*K[0],z*K[0],ks)*.7+noise2(x*K[0]*2.3,z*K[0]*2.3,ks+1)*.3,rise=smooth(.05,.8,n);
     return rise&&K[1]*rise*(rivers.length?smooth(P.valley,P.valley*1.7,river(x,z).edge):1);
   };
-  const t={P,water:W,raw,river,dry,clearOfRiver,rivers,knoll};
+  /** Rolling hills (rolling = {frequency, height, ridges, dips}): broad domain-warped swells up to `height` metres, a few
+   *  soft ridges on top, and shallow hollows that never sink within 0.8 m of the river banks' level. Fades out over 4.5
+   *  valley widths from every river, so the banks, the water and the bridges are exactly as before. Not in raw: like the
+   *  knolls, only heldGround adds it, scaled by distance from the town (so the server never sees it). base: raw(x,z). */
+  const R=P.rolling,rs=seedInt(P.seed+':rolling');
+  const roll=(x,z,base)=>{
+    if(!R)return 0;
+    const fade=rivers.length?smooth(P.valley,P.valley*4.5,river(x,z).edge):1;if(!fade)return 0;
+    const f=R.frequency,warp=30*noise2(x*f*1.7,z*f*1.7,rs+2),wx=x+warp,wz=z-warp;
+    const n=noise2(wx*f,wz*f,rs)*.65+noise2(wx*f*2.3,wz*f*2.3,rs+1)*.35,ridge=1-Math.abs(noise2(wx*f*.6,wz*f*.6,rs+4));
+    const dip=Math.min(R.dips*smooth(-.3,-.7,n),Math.max(0,base-W-P.bank_y-.8));
+    return fade*(R.height*(smooth(-.6,.8,n)+R.ridges*smooth(.72,.98,ridge))-dip);
+  };
+  const t={P,water:W,raw,river,dry,clearOfRiver,rivers,knoll,roll};
   built.set(P,t);return t;
 }
 
@@ -81,7 +94,8 @@ export function terrain(P){
  * Held ground: holds are flat discs {x,z,r,ease,y}. Inside r the ground is exactly y; over `ease` it blends back to raw.
  * Overlapping holds blend by weight. Returns height(x,z). Holds are bucketed so a lookup touches only nearby discs.
  * Knolls (t.knoll) rise only past every hold's eased edge: none until knoll_clear[0] metres out, full at knoll_clear[1],
- * so the town's ground is exactly what it was without them. height.lift(x,z) is the knoll part alone.
+ * so the town's ground is exactly what it was without them. height.lift(x,z) is the knoll part alone. Rolling hills
+ * (t.roll) start where the knolls are full and grow with distance; height.hill(x,z) is that part alone.
  */
 export function heldGround(t,holds,cell=32){
   const grid=new Map(),key=(i,j)=>i+':'+j,[c0,c1]=t.P.knoll_clear||[0,0];
@@ -91,17 +105,28 @@ export function heldGround(t,holds,cell=32){
       const k=key(i,j);if(!grid.has(k))grid.set(k,[]);grid.get(k).push(h);
     }
   }
-  const lift=(x,z,list)=>{
+  // Rolling hills grow with the distance past every hold's eased edge: none until knoll_clear[1] (where the knolls are
+  // full), full height `ramp` metres further, then on to 1.4x far out. Every hold counts, so no bucket edge shows.
+  // Where the hills have grown the knolls soften to 70%, so the two together keep the slopes gentle.
+  const R=t.P.rolling,hx=Float64Array.from(holds,h=>h.x),hz=Float64Array.from(holds,h=>h.z),he=Float64Array.from(holds,h=>h.r+h.ease);
+  const grow=(x,z)=>{
+    if(!R)return 0;let gap=Infinity;
+    for(let i=0;i<hx.length;i++){const dx=x-hx[i],dz=z-hz[i],d=Math.sqrt(dx*dx+dz*dz)-he[i];if(d<gap)gap=d;}
+    return smooth(c1,c1+R.ramp,gap)*(1+.4*smooth(c1+R.ramp,c1+3*R.ramp,gap));
+  };
+  const lift=(x,z,list,g)=>{
     if(!t.P.knolls)return 0;let gap=Infinity;if(list)for(const h of list)gap=Math.min(gap,Math.hypot(x-h.x,z-h.z)-h.r-h.ease);
-    const m=smooth(c0,c1,gap);return m&&m*t.knoll(x,z);
+    const m=smooth(c0,c1,gap);return m&&m*t.knoll(x,z)*(1-.3*Math.min(1,g));
   };
   const height=(x,z)=>{
-    const list=grid.get(key(Math.floor(x/cell),Math.floor(z/cell))),raw=t.raw(x,z);if(!list)return raw+lift(x,z,list);
+    const list=grid.get(key(Math.floor(x/cell),Math.floor(z/cell))),raw=t.raw(x,z),g=grow(x,z),rest=lift(x,z,list,g)+(g&&g*t.roll(x,z,raw));if(!list)return raw+rest;
     let num=0,den=0,top=0;
     for(const h of list){const d=Math.hypot(x-h.x,z-h.z);if(d>=h.r+h.ease)continue;const w=1-smooth(h.r,h.r+h.ease,d);num+=w*h.y;den+=w;if(w>top)top=w;}
-    return (den?raw+(num/den-raw)*top:raw)+lift(x,z,list);
+    return (den?raw+(num/den-raw)*top:raw)+rest;
   };
-  height.lift=(x,z)=>lift(x,z,grid.get(key(Math.floor(x/cell),Math.floor(z/cell))));
+  height.lift=(x,z)=>lift(x,z,grid.get(key(Math.floor(x/cell),Math.floor(z/cell))),grow(x,z));
+  /** The rolling-hill part of the ground alone (0 in and around the town). */
+  height.hill=(x,z)=>{const g=grow(x,z);return g&&g*t.roll(x,z,t.raw(x,z));};
   return height;
 }
 

@@ -57,7 +57,8 @@ test('a demo task streams as frames, keeps the projection, and its chat pages fr
     await until(() => frames().some(f => f.includes('"approval"')));
     const all = frames().slice(1).map(f => JSON.parse(f));
     // This page is the owner's, so activity and live-text frames (plan 8.2, 8.3) arrive between the journal's: each repeats the seq before it.
-    const parsed = all.filter(f => !f.activity && !f.delta);
+    // Presence (plan 10.10) names who is connected and carries no seq.
+    const parsed = all.filter(f => !f.activity && !f.delta && !f.presence);
     all.forEach((f, i) => { if (f.activity || f.delta) assert.equal(f.seq, i ? all[i - 1].seq : state.seq, 'a transient frame never moves seq'); });
     assert.ok(all.some(f => f.activity?.label === 'asking a cat'), 'the demo’s delegation shows as activity');
     assert.ok(parsed.length > 5, `${parsed.length} frames`);
@@ -77,8 +78,10 @@ test('a demo task streams as frames, keeps the projection, and its chat pages fr
     assert.equal((await fetch(base + '/api/chats/mayor?before=missing')).status, 400);
     assert.equal((await fetch(base + '/api/chats/mayor?limit=0')).status, 400);
 
-    // audio.js's season-only stream gets no state frames.
+    // audio.js's season-only stream gets no state frames. It answers at once, not at its first 20 s keep-alive.
+    const asked = Date.now();
     const season = await fetch(base + '/api/events?only=season', {signal: controller.signal});
+    assert.ok(Date.now() - asked < 5000, `the season stream answered in ${Date.now() - asked} ms`);
     const first = await Promise.race([season.body!.getReader().read().then(r => decoder.decode(r.value)), new Promise<string>(r => setTimeout(() => r(''), 1500))]);
     assert.ok(!first.includes('hello'), 'no hello on the season stream');
   } finally {

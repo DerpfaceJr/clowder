@@ -1,10 +1,10 @@
 // Android ping (plan 5.4, D8): for a paired phone whose app has no Web Push (the Android app's WebView), Clowder can ping the free ntfy
 // app instead. The ping is one fixed line, "Clowder needs you — open the app": nothing about the decision leaves the computer. Each phone
-// is turned on by itself and gets its own private address. ☰ > Devices & AI > Android ping opens this panel. Routes (src/ntfy.ts):
+// is turned on by itself and gets its own private address. Post office > Channels > Android ping opens this panel. Routes (src/ntfy.ts):
 // GET /api/ntfy, POST /api/ntfy/devices/:id/enable (returns the subscribe address) and /disable, on the host computer. The pure
 // helpers are exported for Node tests; the DOM is built with createElement and textContent only.
 import {confirmDialog} from './dialogs.js';
-import {copyBox, devicesEntry, h, msgNode, ownerDialog, readJson, sendJson, switchControl} from './owner-dialog.js';
+import {copyBox, postOfficeEntry, h, msgNode, ownerDialog, readJson, sendJson, switchControl} from './owner-dialog.js';
 
 export const HOST_ONLY = 'Notifications are managed on the host computer.';
 export const NTFY_APP = 'https://ntfy.sh/';
@@ -20,7 +20,7 @@ export function subscribeParts(url, server = 'https://ntfy.sh') {
   } catch { return {topic: '', server: String(server ?? ''), otherServer: false}; }
 }
 
-/** The ☰ entry's note: how many phones get pings. */
+/** The Post office entry's note: how many phones get pings. */
 export function entrySummary(devices) {
   const on = list(devices).filter(d => d.enabled).length;
   return on ? `${on} ${on === 1 ? 'phone gets' : 'phones get'} a ping when Clowder needs you` : 'Ping a phone through the ntfy app when Clowder needs you';
@@ -104,10 +104,10 @@ export function createNtfyPanel({doc = document, win = globalThis.window, fetchI
   return {open, close: () => dialog.close(), refresh, probe, dialog, summary: () => ui.summary};
 }
 
-/** ☰ > Devices & AI > Android ping, shown once the host route answers. */
+/** Post office > Channels > Android ping, shown once the host route answers. */
 export function initNtfyPanel(options = {}) {
   const doc = options.doc ?? document, panel = createNtfyPanel(options);
-  const entry = devicesEntry(doc, {id: 'ntfy-open', text: 'Android ping', note: 'Ping a phone through the ntfy app when Clowder needs you', open: panel.open});
+  const entry = postOfficeEntry(doc, {id: 'ntfy-open', group: 'channels', text: 'Android ping', note: 'Ping a phone through the ntfy app when Clowder needs you', open: panel.open});
   void panel.probe().then(ok => { if (entry) { entry.hidden = !ok; if (ok) entry.setAttribute('data-note', panel.summary()); } });
   return panel;
 }

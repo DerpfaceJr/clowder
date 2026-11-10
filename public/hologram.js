@@ -1,14 +1,5 @@
 import * as T from 'three';
-
-// First sentence of a message as a short line, capped at max characters with an ellipsis at a word boundary.
-export function oneLiner(text,max=40){
-  // Markdown marks go; an underscore inside a name (push_files) stays.
-  const sentence=String(text??'').replace(/[*#>`]/g,'').replace(/(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g,'').split(/[.!?]+(?=\s|$)|[\r\n]/).map(s=>s.replace(/^[.!?\s]+/,'').replace(/\s+/g,' ').trim()).find(Boolean)||'';
-  if(sentence.length<=max)return sentence;
-  if(max<=0)return '';
-  const cut=sentence.slice(0,max-1),space=cut.lastIndexOf(' ');
-  return (space>max*.5?cut.slice(0,space):cut).trimEnd()+'…';
-}
+import {oneLiner} from './one-liner.js';
 
 // Hologram palette, shared by the reaction icons and the talk bubbles: a dark teal glass plate under a cyan glow edge,
 // with near-white text, so the glyphs read against grass, roofs and the night sky alike.
@@ -106,4 +97,20 @@ export function fitBubble(sprite,camera,viewportHeight,heightPx=BUBBLE_PX){
 // Cached hologram textures stay alive for the next sprite that shows the same text; other maps are freed with the sprite.
 export function disposeSprite(sprite){
   sprite.removeFromParent();if(!sprite.material.map?.userData.cached)sprite.material.map?.dispose();sprite.material.dispose();
+}
+
+/** Name plate for a headstone. Same canvas-sprite approach as the speech bubbles, sized with fitBubble. */
+export function nameplate(text){
+  const FONT='600 24px system-ui,sans-serif',PAD=12,HEIGHT=34,MARGIN=4;
+  const label=String(text||'').slice(0,40)||'Unnamed';
+  const probe=document.createElement('canvas').getContext('2d');probe.font=FONT;
+  const width=Math.ceil(probe.measureText(label).width)+2*PAD+2*MARGIN,height=HEIGHT+2*MARGIN;
+  const canvas=document.createElement('canvas');canvas.width=width*2;canvas.height=height*2;
+  const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.font=FONT;
+  ctx.fillStyle='rgba(54,62,52,.78)';ctx.strokeStyle='#e7dcc0';ctx.lineWidth=2;
+  ctx.beginPath();ctx.roundRect(MARGIN,MARGIN,width-2*MARGIN,HEIGHT,12);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#f6eedb';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,width/2,MARGIN+HEIGHT/2+1);
+  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
+  const sprite=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));
+  sprite.center.set(.5,0);sprite.userData.aspect=width/height;return sprite;
 }

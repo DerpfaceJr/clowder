@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {createMemorialView, createTownPause, MEMORIAL_EVENT} from '../public/memorial-view.js';
 import {createMemorialTransition, FLIGHT, REVEAL, FADE, RETURN, QUICK, SETTLE_FRAMES_MS} from '../public/memorial-transition.js';
@@ -283,11 +284,36 @@ test('the Archive flies to its own shot with no tint, and open(true) is the quic
   assert.equal(t.zoom.open(true), true);
   assert.equal(t.stage.flights.length, 2, 'a quick open does not fly');
   assert.equal(t.dialog.open, true);
-  assert.ok(t.dialog.classList.contains('zoom-fade'));
+  assert.ok(t.dialog.classList.contains('zoom-quick'), 'the chat-opened look, not the reduced-motion fade');
   t.c.advance(QUICK);
   assert.equal(t.zoom.state, 'revealed');
   t.zoom.close('button');
+  assert.ok(t.dialog.classList.contains('zoom-quick-leave'));
   t.c.advance(QUICK);
   assert.equal(t.zoom.state, 'idle');
   assert.equal(t.stage.flights.length, 2, 'and does not fly back');
+});
+
+test('plan 8.10: open(true) crossfades over quickMs (app.js passes --dur-quick) each way, and a plain open keeps its own timing', () => {
+  const t = setup({extra: {quickMs: 120}});
+  t.zoom.open(true);
+  assert.deepEqual([t.stage.flights, t.stage.tints, t.sounds], [[], [], []], 'no flight, tint or whoosh');
+  t.c.advance(119);
+  assert.equal(t.zoom.state, 'flying');
+  t.c.advance(1);
+  assert.equal(t.zoom.state, 'revealed');
+  t.zoom.close('button');
+  t.c.advance(120);
+  assert.equal(t.zoom.state, 'idle');
+  const r = setup({reduced: true, extra: {quickMs: 120}});
+  r.zoom.open();
+  assert.ok(r.dialog.classList.contains('zoom-fade'));
+  r.c.advance(120);
+  assert.equal(r.zoom.state, 'flying', 'reduced motion keeps the QUICK fade');
+  r.c.advance(QUICK - 120);
+  assert.equal(r.zoom.state, 'revealed');
+  const css = readFileSync(new URL('../public/memorial-sky.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(css, /\.memorial-view\.zoom-quick\{animation:memorial-in var\(--dur-quick\) var\(--ease-out\) both\}/);
+  assert.match(css, /\.memorial-view\.zoom-quick-leave\{animation:memorial-in var\(--dur-quick\) var\(--ease-out\) reverse both\}/);
+  assert.match(css, /:is\([^)]*\.zoom-quick,[^)]*\.zoom-quick-leave\)::backdrop\{background:transparent/, 'the town shows through while it runs');
 });

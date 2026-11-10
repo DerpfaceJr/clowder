@@ -13,6 +13,7 @@ import {demoProvider,mayorTools,toolDefinitions,type Provider} from '../src/prov
 import {quests} from '../src/quests.ts';
 import {projects} from '../src/projects.ts';
 import {offeredTools,type AutonomyLevel} from '../src/autonomy.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 // Short pauses keep the tests fast; the real default is config.goals.roundPauseSeconds.
@@ -24,7 +25,7 @@ const fixture=(config:any=fast,autonomy:AutonomyLevel='balanced',providers:Recor
   const town=new Town(store,config,providers);town.autonomy=()=>autonomy;
   return {file,store,town,config};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(10);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+name+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 // The round number is in the round prompt, the last "This is round N" in the conversation.

@@ -46,11 +46,12 @@ test('a new world has the memorial and its road with no retired cats',()=>{
 
 test('the memorial is reachable by road from every door',()=>{
   const {store,town}=fixture();for(let i=0;i<20;i++)town.recruit('mayor','Walker '+i,'Research');
-  const layout=townLayout(store.state.cats,store.state.groups,config.world.layout),roadPoints=new Set(layout.roads.flatMap((r:any)=>r.points.map((p:number[])=>p.join(','))));
+  const layout=townLayout(store.state.cats,store.state.groups,config.world.layout);
   for(const cat of store.state.cats){
     const path=layout.memorialPath(cat);assert.ok(path&&path.length>2,`${cat.id} cannot walk to the memorial`);
     assert.deepEqual(path.at(-1),layout.memorial.door);
-    for(const p of path)if(!roadPoints.has(p.join(','))&&!store.state.groups.some(g=>Math.hypot(p[0]-g.site.x,p[1]-g.site.z)<plazaOf(g.site,L)))assert.fail(`${cat.id}: path leaves the roads at ${p}`);
+    // Rounded corners leave the road's line, never its paving (the walk starts at the cat's own door).
+    for(const p of path)if(!layout.paved(p[0],p[1])&&Math.hypot(p[0]-cat.home!.x,p[1]-cat.home!.z)>=L.stem+.6)assert.fail(`${cat.id}: path leaves the paving at ${p}`);
   }
 });
 

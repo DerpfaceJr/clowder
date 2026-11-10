@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {healthOf, whoText, expiryLine, isReference, ownerConnected, summaryLine, directoryOrder, groupOf, serviceOf, serviceGroups, catsLine, modelHealth, createAccountsPanel, POLL_MS} from '../public/accounts-panel.js';
+import {healthOf, whoText, expiryLine, isReference, ownerConnected, needsSignIn, summaryLine, directoryOrder, DIRECTORY_GROUPS, groupOf, serviceOf, serviceGroups, catsLine, modelHealth, createAccountsPanel, POLL_MS} from '../public/accounts-panel.js';
 import {appsStep} from '../public/setup-hub.js';
 import {fakeDocument, fakeWindow, fakeServer, settle, byKey, buttonByText} from './fixtures/fake-dom-accounts.mjs';
 
@@ -62,14 +62,23 @@ test('Ready counts only what the owner connected: a no-sign-in starter is refere
   assert.equal(ownerConnected({...github, enabled: false}), false);
   assert.equal(summaryLine([starter, {...starter, id: 'deepwiki'}]), 'Nothing connected yet. Add a service below.');
   assert.equal(summaryLine([starter, github]), '1 connected');
-  assert.equal(summaryLine([starter, github, linear]), '1 connected · 1 needs you');
-  assert.equal(summaryLine([linear, {...linear, id: 'vercel'}]), '2 need you');
+  // Plan 11.8 (N13): the count is of sign-ins, so it never reads as a second "needs you" beside the Inbox badge.
+  assert.equal(needsSignIn(linear), true);
+  assert.equal(needsSignIn(github), false);
+  assert.equal(needsSignIn(starter), false, 'a reference starter never needs a sign-in');
+  assert.equal(summaryLine([starter, github, linear]), '1 connected · 1 needs a sign-in');
+  assert.equal(summaryLine([linear, {...linear, id: 'vercel'}]), '2 need a sign-in');
+  assert.equal(summaryLine([linear]), '1 needs a sign-in');
+  for (const line of [summaryLine([linear]), summaryLine([linear, {...linear, id: 'vercel'}]), summaryLine([github, linear])]) assert.doesNotMatch(line, /\bneeds? you\b/i);
   // The setup hub's Apps row uses the same rule.
   assert.equal(appsStep([starter, {...starter, id: 'deepwiki', name: 'DeepWiki'}]).state, 'optional');
   assert.equal(appsStep([starter, {...github, name: 'GitHub'}]).text, 'GitHub connected.');
 });
 
 test('the directory leads with assistant services, then build tools, then reference docs, and search filters it', () => {
+  // Plan 11.8 (N7): the first group is Everyday apps; "For you" is the Inbox's suggestions feature (D16), not a directory group.
+  assert.deepEqual(DIRECTORY_GROUPS.map(([, title]) => title), ['Everyday apps', 'For building', 'Reference for cats · no sign-in']);
+  assert.equal(DIRECTORY_GROUPS.some(([, title]) => /for you/i.test(title)), false);
   assert.deepEqual(directoryOrder(DIRECTORY).map(d => d.id), ['google-workspace', 'github', 'linear', 'vercel', 'context7', 'deepwiki']);
   assert.deepEqual(DIRECTORY.map(groupOf), ['reference', 'reference', 'build', 'assistant', 'assistant', 'assistant']);
   assert.deepEqual(directoryOrder(DIRECTORY, 'lin').map(d => d.id), ['linear']);
@@ -134,6 +143,9 @@ test('the entry shows only where the owner route answers, and the hub paints wit
   assert.doesNotMatch(text, /\bnull\b|\bundefined\b/);
   assert.match(text, /Nothing connected yet\. Add a service below\./, 'the starter does not count');
   assert.match(text, /Reference for cats · no sign-in/);
+  // Plan 11.8: the directory's group headings, as painted.
+  assert.deepEqual(host.body().querySelector('div.ac-dir').querySelectorAll('p.ac-sub').map(n => n.textContent), ['Everyday apps', 'For building', 'Reference for cats · no sign-in']);
+  assert.doesNotMatch(text, /For you/);
   assert.match(text, /Claude plan · opus/);
   assert.match(text, /Not set up: ChatGPT plan\./);
   assert.match(text, /Paired with your DM on mayor_bot/);
@@ -145,6 +157,20 @@ test('the entry shows only where the owner route answers, and the hub paints wit
   const viewer = mount({'GET /api/connectors': () => new Error('Owner only.')});
   assert.equal(await viewer.panel.probe(), false);
   assert.equal(viewer.button.hidden, true);
+});
+
+test('the summary at the top counts accounts that need a sign-in, in words that are not the Inbox badge’s (plan 11.8, N13)', async t => {
+  const linear = {id: 'linear', name: 'Linear', source: 'directory', enabled: true, status: 'needs-auth', auth: 'oauth', vars: [], cats: ['*'], tools: []};
+  const github = {id: 'github', name: 'GitHub', source: 'directory', enabled: true, status: 'connected', auth: 'none', vars: [{name: 'GITHUB_PERSONAL_ACCESS_TOKEN', set: true}], cats: ['*'], tools: []};
+  const p = mount({}, {connectors: [starter, github, linear, {...linear, id: 'vercel', name: 'Vercel'}]});
+  t.after(() => p.doc.restore());
+  await p.panel.open();
+  await settle();
+  const count = p.body().querySelector('p.ac-count');
+  assert.equal(count.textContent, '1 connected · 2 need a sign-in');
+  assert.equal(count.getAttribute('role'), 'status');
+  assert.doesNotMatch(p.body().textContent, /\bneeds? you\b/i);
+  p.panel.close();
 });
 
 test('Add on a sign-in service switches it on, gives it to every cat and opens its sign-in in one tap; the row updates when it finishes', async t => {
@@ -336,15 +362,17 @@ test('typing in the directory search filters the list under it and leaves the bo
   assert.match(p.body().querySelector('div.ac-dir').textContent, /Nothing matches that search\./);
 });
 
-test('☰ > Devices & AI lists Accounts & connections on the host, and app.js wires it and its surface', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(html, /<section id="settings-devices"[^]*?<button id="share"[^>]*>Devices<\/button><button id="accounts-open" data-owner data-host hidden aria-haspopup="dialog" data-note="[^"]+">Accounts &amp; connections<\/button>/);
+test('the Post office lists Accounts & connections under Sign-ins on the host, and app.js wires it and its surface', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(html, /<section class="po-group" data-group="signins"[^>]*>(?:(?!<\/section>)[\s\S])*<div class="menu-items po-items" data-items="signins"><button id="accounts-open" data-owner data-host hidden aria-haspopup="dialog" data-note="[^"]+">Accounts &amp; connections<\/button>/);
+  const menu = html.slice(html.indexOf('<dialog id="town-menu"'), html.indexOf('</dialog>', html.indexOf('<dialog id="town-menu"')));
+  assert.ok(!menu.includes('id="accounts-open"'), 'no longer in ☰');
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(app, /const accountsPanel=createAccountsPanel\(\{button:\$\('accounts-open'\)\}\);\nvoid accountsPanel\.probe\(\);/);
   assert.match(app, /accounts:\(\)=>void accountsPanel\.open\(\)/);
   const css = readFileSync(new URL('../public/accounts-panel.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.equal(/#[0-9a-f]{3,8}\b/i.test(css.replace(/#accounts-dialog/g, '')), false, 'theme tokens only, no raw colours');
   assert.match(css, /@media\(max-width:600px\)\{\n  #accounts-dialog\{inset:0;width:100%;max-width:none;height:100dvh/, 'a full-screen page on phones');
-  const hub = readFileSync(new URL('../public/setup-hub.js', import.meta.url), 'utf8');
-  assert.match(hub, /openOther\('accounts', '#accounts-open'\)/, 'the setup hub’s Apps row opens the hub');
+  const hub = readFileSync(new URL('../public/setup-hub.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(hub, /openOther\('accounts', '#accounts-open', stepOf\(ctx\)\)/, 'the setup hub’s Apps row opens the hub, and the step it came from gets the hub back (ux-ui-improvements row 4)');
 });

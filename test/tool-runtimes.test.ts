@@ -13,6 +13,7 @@ import {artifactIndex} from '../src/artifacts.ts';
 import {slug} from '../src/plugins.ts';
 import type {Provider} from '../src/provider.ts';
 import {CLI_ENV} from '../src/claude-plan.ts';
+import {untilEvery} from './helpers/until.ts';
 // The fake CLIs read these; a real CLI run gets only CLI_ENV from this process's environment (security pass M3).
 CLI_ENV.push('CAT_FAKE_AUTH', 'CAT_FAKE_CODEX_AUTH', 'CAT_FAKE_CODEX_LOG', 'CAT_FAKE_CODEX_MODE', 'CAT_FAKE_GEMINI_LOG', 'CAT_FAKE_GEMINI_MODE');
 
@@ -68,7 +69,7 @@ const withEnv = async <T>(vars: Record<string, string | undefined>, fn: () => Pr
 };
 const calls = (file: string): any[] => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
 const newWorld = () => { const worldDir = mkdtempSync(join(tmpdir(), 'world-')); return {worldDir, store: new Store(join(worldDir, 'events.jsonl'), allRoles(config))}; };
-async function until(fn: () => boolean, ms = 5000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail('Timed out waiting for state transition'); }
+const until = untilEvery(10);
 function scripted(steps: {name: string; args: any}[]): Provider {
   let turn = 0;
   return async () => {

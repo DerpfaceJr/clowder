@@ -4,7 +4,7 @@ import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUt
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {EYE_DEFAULT} from './editor.js';
 import {stoneLayout} from './memorial.js';
-import {BOARD,FOUNTAIN} from './hamlet-layout.js';
+import {BOARD,FOUNTAIN,GARDEN_FENCE as FENCE} from './hamlet-layout.js';
 import {createWaterMaterial} from './water.js';
 import {snapRoof,shingles} from './house-art.js';
 
@@ -67,6 +67,8 @@ export function bakeCopy(parts,count=Infinity){
     for(const k of Object.keys(geo.attributes))if(k!=='position'&&k!=='normal')geo.deleteAttribute(k);
     c.copy(o.material.color);const n=geo.attributes.position.count,col=new Float32Array(n*3);for(let i=0;i<n;i++)c.toArray(col,i*3);
     geo.setAttribute('color',new T.BufferAttribute(col,3));
+    // 1 where the mesh casts a shadow, 0 for detail over a surface that already casts it (the roof shingles).
+    geo.setAttribute('caster',new T.BufferAttribute(new Uint8Array(n).fill(o.userData.noShadow?0:1),1));
     (glowing.has(o.material)?parts.lit:parts.solid).push(geo);
   }
   return parts.next>=parts.meshes.length;
@@ -105,14 +107,30 @@ export function bakeAO(geo,{cell=.16,steps=7,strength=.55}={}){
   }
   C.needsUpdate=true;return geo;
 }
-/** Merges baked pieces placed by matrices into at most two meshes (solid + glow). items: [{baked, matrix}]. */
+/** The layer only the sun's shadow camera renders (town.js enables it there): shadow-only stand-ins live on it. */
+export const SHADOW_LAYER=1;
+/** Merges baked pieces placed by matrices into at most two meshes (solid + glow). items: [{baked, matrix}].
+ *  When a solid carries detail that need not cast (caster 0, the roof shingles), it also gets a shadow-only stand-in on
+ *  SHADOW_LAYER (userData.shadowStandIn, hidden until a tier asks for it): the same vertex buffers with only the casting
+ *  triangles' index. town.js turns it on for Low, where the solid stops casting and the shingles skip the shadow pass;
+ *  Medium and High keep the shingles' own shadows, the dark arc under every row. */
 export function bakedMeshes(items,{castShadow=true}={}){
   const out=new T.Group();
   for(const [key,material] of [['solid',bakedMaterial],['glow',glowBaked()]]){
     const list=items.filter(i=>i.baked[key]).map(i=>i.baked[key].clone().applyMatrix4(i.matrix));if(!list.length)continue;
     const mesh=new T.Mesh(mergeGeometries(list),material);list.forEach(g=>g.dispose());mesh.castShadow=castShadow;mesh.receiveShadow=true;mesh.userData.ownedGeometry=true;out.add(mesh);
+    const stand=castShadow&&key==='solid'?shadowStandIn(mesh.geometry):null;
+    if(stand){const s=new T.Mesh(stand,material);s.castShadow=true;s.receiveShadow=false;s.layers.set(SHADOW_LAYER);s.visible=false;s.userData.ownedGeometry=true;mesh.userData.shadowStandIn=s;out.add(s);}
   }
   return out;
+}
+/** The casting triangles of a merged solid as a geometry sharing its position buffer, or null when every triangle casts. */
+function shadowStandIn(geo){
+  const flag=geo.attributes.caster,index=geo.index;if(!flag||!index)return null;
+  const keep=[];for(let t=0;t<index.count;t+=3){const a=index.getX(t),b=index.getX(t+1),c=index.getX(t+2);if(flag.getX(a)&&flag.getX(b)&&flag.getX(c))keep.push(a,b,c);}
+  if(keep.length===index.count)return null;
+  const out=new T.BufferGeometry();out.setAttribute('position',geo.attributes.position);out.setIndex(keep);
+  out.boundingBox=geo.boundingBox?.clone()??null;geo.computeBoundingSphere();out.boundingSphere=geo.boundingSphere.clone();return out;
 }
 
 export function makeCat(style,palette,limbs=true){
@@ -172,6 +190,7 @@ export function makeCat(style,palette,limbs=true){
     line(g,[.65,1.17,.14],[.36,.99,.57],.035,'#514b43');ball(g,.1,.06,.06,'#514b43',.3,.99,.6);
   }
   if(style==='archivist')for(let n=0;n<3;n++)book(g,.62,.4+n*.12,.5,['#657f8c','#c89f58','#7e8862'][n],.7).rotation.z=Math.PI/2;
+  if(style==='mailman'){line(g,[-.42,1.02,.44],[.44,.56,.5],.035,'#7a5638');round(g,.34,.27,.14,'#9a7050',.58,.48,.42,.05);round(g,.35,.11,.15,'#7a5638',.58,.58,.43,.04);}
   return g;
 }
 
@@ -192,7 +211,7 @@ function door(g,z,color='#b99672'){
 }
 function flowerbox(g,x,z){round(g,.65,.22,.32,wood,x,.3,z);for(let i=-1;i<=1;i++){ball(g,.14,.13,.12,'#91a46c',x+i*.18,.5,z);ball(g,.08,.08,.07,i?'#e5b0a3':'#f1d186',x+i*.18,.6,z);}}
 function shelves(g,x,y,z){round(g,.9,1.2,.3,wood,x,y,z);for(let j=0;j<2;j++)for(let i=0;i<4;i++)book(g,x-.3+i*.2,y-.24+j*.5,z+.18,['#81929e','#b57f7c','#b8a06c','#8b9c78'][i],.58);}
-function sign(g,color,symbol,y=1.8,z=1.25){round(g,1.14,.42,.14,color,0,y,z);if(symbol==='coin'){const m=cylinder(g,.14,.05,gold,0,y,z+.1);m.rotation.x=Math.PI/2;}else if(symbol==='book'){book(g,0,y,z+.1,ivory,.65).rotation.z=Math.PI/2;}else if(symbol==='parcel')round(g,.21,.21,.08,ivory,0,y,z+.11);else{for(let i=-1;i<=1;i++)ball(g,.045,.045,.03,ivory,i*.18,y,z+.1);}}
+function sign(g,color,symbol,y=1.8,z=1.25){round(g,1.14,.42,.14,color,0,y,z);if(symbol==='coin'){const m=cylinder(g,.14,.05,gold,0,y,z+.1);m.rotation.x=Math.PI/2;}else if(symbol==='book'){book(g,0,y,z+.1,ivory,.65).rotation.z=Math.PI/2;}else if(symbol==='parcel')round(g,.21,.21,.08,ivory,0,y,z+.11);else if(symbol==='letter'){round(g,.38,.25,.04,ivory,0,y,z+.09,.02);for(const x of [-1,1])line(g,[x*.17,y+.11,z+.115],[0,y-.03,z+.115],.014,'#9a8a78');ball(g,.04,.04,.02,'#c8523f',0,y-.03,z+.125);}else{for(let i=-1;i<=1;i++)ball(g,.045,.045,.03,ivory,i*.18,y,z+.1);}}
 
 // Curved, flared roofs and hand-built silhouettes give every trade its own fairy-tale home.
 function cap(g,r,h,color,x,y,z){
@@ -206,7 +225,7 @@ function roofCap(g,r,h,color,x,y,z){
   const kit=shingles(r>=1.4?'cap_large':'cap_small'),points=[[r*1.08,0],[r,.12*h],[r*.77,.3*h],[r*.48,.57*h],[r*.22,.8*h],[.035,h]].map(p=>new T.Vector2(...p));
   const m=mesh(g,geometry(`roofcap:${r}:${h}`,()=>new T.LatheGeometry(points,28)),kit?shade(color,.8):color,x,y,z);
   mesh(g,geometry(`eave:${r}`,()=>new T.TorusGeometry(r*1.08,.035+.02*r,6,28).rotateX(Math.PI/2)),shade(color,.68),x,y+.02,z);
-  if(kit)for(const part of ['face','lip'])mesh(g,kit[part].geo,shade(color,kit[part].shade),x,y,z).scale.set(r,h,r);
+  if(kit)for(const part of ['face','lip']){const s=mesh(g,kit[part].geo,shade(color,kit[part].shade),x,y,z);s.scale.set(r,h,r);s.userData.noShadow=true;}
   return m;
 }
 /** The cottage gable roof with shingle rows down both slopes and a ridge cap. */
@@ -218,7 +237,7 @@ function roofGable(g,w,h,d,color,y){
     const nx=side*Math.sin(slope),ny=Math.cos(slope),dx=-side*Math.cos(slope),dy=Math.sin(slope);
     for(const part of ['face','lip']){
       const s=mesh(g,kit[part].geo,shade(color,kit[part].shade),side*w/2+nx*bevel-dx*eave,y+ny*bevel-dy*eave,0);
-      s.rotation.set(side>0?Math.PI:0,0,side>0?Math.PI-slope:slope,'ZYX');s.scale.set(L+eave,1,d+.14);
+      s.rotation.set(side>0?Math.PI:0,0,side>0?Math.PI-slope:slope,'ZYX');s.scale.set(L+eave,1,d+.14);s.userData.noShadow=true;
     }
   }
   mesh(g,geometry(`ridge:${d}`,()=>new T.CylinderGeometry(.1,.1,d+.24,10).rotateX(Math.PI/2)),shade(color,.68),0,y+h+bevel*.6,0);
@@ -227,7 +246,7 @@ function roofGable(g,w,h,d,color,y){
 /** The merchant's onion dome: a smooth ellipsoid under shingle rows. */
 function roofDome(g,rx,ry,rz,color,x,y,z){
   const kit=shingles('dome'),m=mesh(g,geometry('dome',()=>new T.SphereGeometry(1,28,14)),kit?shade(color,.8):color,x,y,z);m.scale.set(rx,ry,rz).multiplyScalar(kit?.97:1);
-  if(kit)for(const part of ['face','lip'])mesh(g,kit[part].geo,shade(color,kit[part].shade),x,y,z).scale.set(rx,ry,rz);
+  if(kit)for(const part of ['face','lip']){const s=mesh(g,kit[part].geo,shade(color,kit[part].shade),x,y,z);s.scale.set(rx,ry,rz);s.userData.noShadow=true;}
   return m;
 }
 /** Where a house's life goes, house-local: chimney tops for smoke, and for every glowing pane or door the ground spot it
@@ -258,7 +277,6 @@ const SPOTS={
   archivist:{sill:[[-.72,1.48,1.3],[.72,1.48,1.3]],chimney:[-.6,-.6,3.1,4.1],vane:[0,4,0],bunting:{y:2.54,sag:.14,arc:[2.05,2.05,.8]},ivy:[[-1.1,1.04]]},
   mayor:{...cottage(2.3),chimney:[-.8,.6,2.6,3.85],chimneyBack:[-.3,-.95,2.6,3.85],vane:[-1.35,4.55,-.65]},critic:{...cottage(1.85),chimney:[.85,-.45,2.15,3.4]}
 };
-const FENCE=[[[-2.45,.95],[-2.45,2.15],[-2.1,2.5],[-.85,2.55]],[[2.45,.95],[2.45,2.1]]];
 function sillBox(g,x,y,z){round(g,.62,.16,.3,wood,x,y,z,.04);for(let i=-1;i<=1;i++){ball(g,.13,.1,.1,'#7fa063',x+i*.19,y+.12,z);ball(g,.08,.07,.07,i?'#ec9fa6':'#f6d27a',x+i*.19,y+.2,z+.03);}}
 // Smoke rises from the stack: house-art.js draws it for the whole town from userData.life.smoke (one instanced draw).
 function chimney(g,x,z,base,top){
@@ -374,6 +392,15 @@ export function makeHouse(style,p){
       cylinder(g,.55,2.3,wall,-1.35,1.23,-.5);roofCap(g,.75,1.65,p.roof,-1.35,2.4,-.5);
       round(g,.85,1,.12,wood,-1.65,.8,1.1);round(g,.7,.8,.04,ivory,-1.65,.8,1.19);
       for(let n=0;n<3;n++){crystal(g,-1.88,.58+n*.2,1.23,p.outfit,.04);round(g,.32,.025,.03,wood,-1.57,.58+n*.2,1.23);}height=4.35;
+    }else if(style==='mailman'){
+      // The post office: a letter sign over the door, a red pillar box by the step, a parcel stack at the side and a
+      // postal flag on the ridge. The garden's own mailbox stays where every home has it.
+      sign(g,'#c8523f','letter',1.62,1.25);
+      // The pillar box stands left of the door: the cat's own spot is front right (hamlet-layout standPoint), the bench further left.
+      round(g,.5,.1,.5,'#5d5a63',-1.45,.08,1.6,.04);cylinder(g,.22,.95,'#c8523f',-1.45,.6,1.6);cylinder(g,.26,.06,'#a8423a',-1.45,1.09,1.6);ball(g,.24,.15,.24,'#c8523f',-1.45,1.12,1.6);
+      round(g,.2,.04,.05,dark,-1.45,.92,1.81,.01);round(g,.15,.1,.02,ivory,-1.45,.72,1.82,.01);
+      for(const [y,w,c,yaw] of [[.27,.52,'#c9a06a',0],[.67,.4,'#ddb984',.35]]){const box=round(g,w,.4,w*.85,c,-1.72,y,.5,.04);box.rotation.y=yaw;const tie=round(g,w+.01,.41,.05,'#8a6a4a',-1.72,y,.5,.01);tie.rotation.y=yaw;}
+      cylinder(g,.035,.95,'#5d5a63',0,h+1.85,-.9);const flag=round(g,.5,.3,.03,'#3f6a96',.27,h+2.15,-.9,.02);flag.rotation.z=-.05;height=4.3;
     }else if(style==='operator'){
       roofCap(g,.7,1.3,p.roof,1.12,2.8,-.55);cylinder(g,.055,1.25,gold,1.12,4.15,-.55);
       const orb=ball(g,.27,.27,.27,'#9edee2',1.12,4.7,-.55);orb.material=glow('#9edee2');ring(g,.43,.025,gold,1.12,4.7,-.55).rotation.y=.6;
@@ -438,7 +465,7 @@ function rounded(r,h,y,color,top){
   return painted(new T.LatheGeometry(pts,9).translate(0,y,0),color,top);
 }
 let props=null;
-/** Shared prop geometries: tree variants (oak, pine, birch, blossom), bush, rock, reed clump, two wildflower clumps, grass tuft. */
+/** Shared prop geometries: tree variants (oak, pine, birch, blossom), bush, reed clump, two wildflower clumps, grass tuft. */
 export function propGeometries(){
   if(props)return props;
   // Props stay indexed (painted keeps the index): instanced across the whole streamed land, a de-indexed tree ran its
@@ -454,7 +481,6 @@ export function propGeometries(){
   const birch=m([trunk(.13,2,'#ece5d3'),...crown([blob(.75,0,2.5,0,1.55,'#93b56a','#bcd889'),blob(.5,.35,2.1,.2,1.2,'#9cbd70','#c3dc91')])]);
   const blossom=m([trunk(.17,1.2,'#7d5a46'),...crown([blob(.9,0,1.85,0,.85,'#e9b1bd','#f7d3da'),blob(.62,.55,1.7,.2,.85,'#eab8c3','#f8dce1'),blob(.58,-.42,1.8,-.25,.85,'#e3a9b6','#f3cdd4')])]);
   const bush=m(crown([blob(.62,0,.42,0,.75,'#5f8d5d','#86ad6c'),blob(.48,.5,.34,.15,.75,'#679562','#8fb573'),blob(.44,-.42,.32,-.12,.75,'#5d8a5a','#7fa86a')]));
-  const rock=painted(new T.DodecahedronGeometry(.6,0).scale(1,.62,.85).translate(0,.18,0),'#8f8b80','#b9b4a6');
   const blade=(a,h,lean,color,top)=>{const c=Math.cos(a),s=Math.sin(a),w=.05;return painted(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([-w*c,0,-w*s,w*c,0,w*s,lean*c,h,lean*s],3)).setAttribute('normal',new T.Float32BufferAttribute([0,1,0,0,1,0,0,1,0],3)),color,top);};
   const reed=m([...[0,1,2,3,4,5].map(n=>blade(n*1.05,1.1+(n%3)*.3,.12*(n%2?1:-1),'#6f8a4c','#b2c47a')),painted(new T.CylinderGeometry(.045,.045,.28,5).translate(.05,1.35,0),'#7a5233','#8d6240'),painted(new T.CylinderGeometry(.04,.04,.24,5).translate(-.12,1.15,.06),'#7a5233','#8d6240')]);
   // A clump of three blooms: a stem blade and a squashed octahedron head each (about 30 triangles for the clump).
@@ -475,7 +501,7 @@ export function propGeometries(){
   const cairn=m([stone(.36,.12,.45,0),stone(.27,.36,.5,.7),stone(.2,.55,.55,1.9),stone(.12,.71,.6,.4)]);
   const board=(w,h,d,x,y,z,rz=0)=>painted(new T.BoxGeometry(w,h,d).rotateZ(rz).translate(x,y,z),'#7a5a40','#a6825e');
   const fence=m([board(.11,.8,.11,-.6,.4,0,.06),board(.11,.62,.11,.62,.31,0,-.12),board(1.35,.09,.05,0,.6,.06,.03),board(1.2,.09,.05,.1,.3,.06,-.22),board(1.1,.05,.09,.15,.03,.38).rotateY(.35)]);
-  props={trees:[oak,pine,birch,blossom],bush,rock,reed,flowers:[flower('#f6efe0','#f1cf6b'),flower('#c9b4df','#fff1bf')],tuft,mushrooms,stumps:stump,logs:log,cairns:cairn,fences:fence};
+  props={trees:[oak,pine,birch,blossom],bush,reed,flowers:[flower('#f6efe0','#f1cf6b'),flower('#c9b4df','#fff1bf')].map(g=>{const n=g.attributes.normal;for(let i=0;i<n.count;i++)n.setXYZ(i,0,1,0);return g;}),tuft,mushrooms,stumps:stump,logs:log,cairns:cairn,fences:fence};
   return props;
 }
 /** Wind for grass, reeds and flowers: one time uniform; sway grows with height above the prop's base. */

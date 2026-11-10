@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -13,6 +14,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -42,8 +44,10 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
@@ -66,6 +70,13 @@ public class MainActivity extends Activity {
     private static final Pattern DEVICE_TOKEN = Pattern.compile("[0-9a-f]{64}");
     private static final int TIMEOUT_MS = 10_000;
     private static final long LOOKUP_GAP_MS = 20_000;
+    // The town's upload cap (src/uploads.ts UPLOAD_CAP): a longer shared file is not read past it or sent.
+    private static final int UPLOAD_CAP = 20 * 1024 * 1024;
+    private static final int UPLOAD_TIMEOUT_MS = 120_000;
+    // The town words its own answers; these are for when it is not asked. TOO_BIG is the town's own wording of the cap.
+    private static final String TOO_BIG = "This file is larger than the 20 MB limit.";
+    private static final String UNREADABLE = "Clowder could not read that file.";
+    private static final String SAVED = "Saved to the gallery: ";
 
     private SharedPreferences prefs;
     private String origin;
@@ -222,7 +233,7 @@ public class MainActivity extends Activity {
         return getString(value ? R.string.yes : R.string.no);
     }
 
-    /** Pulls a pairing link out of a VIEW (https or clowder://open) or SEND (shared text) intent. */
+    /** Pulls a pairing link out of a VIEW (https or clowder://open) or SEND (shared text) intent. A SEND with a file uploads it instead. */
     private Uri incomingLink(Intent intent) {
         if (intent == null) {
             return null;
@@ -236,6 +247,12 @@ public class MainActivity extends Activity {
             return link;
         }
         if (Intent.ACTION_SEND.equals(action)) {
+            // Any app can send this activity anything, so a stream that is not a Uri is ignored rather than cast.
+            Object file = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (file instanceof Uri) {
+                shareFile((Uri) file);
+                return null;
+            }
             String text = intent.getStringExtra(Intent.EXTRA_TEXT);
             if (text != null) {
                 for (String part : text.split("\\s+")) {
@@ -555,6 +572,92 @@ public class MainActivity extends Activity {
                 conn.disconnect();
             }
         }
+    }
+
+    /**
+     * A file shared from another app (plan 11.22) goes to the town's owner upload route on a worker thread, with this device's
+     * cookie. The town decides: a viewer device is refused there, and the town's own words are shown. Only content:// is read.
+     */
+    private void shareFile(Uri file) {
+        String town = origin;
+        String device = savedDevice != null ? savedDevice
+                : town == null ? null : deviceToken(CookieManager.getInstance().getCookie(town));
+        if (town == null || device == null) {
+            toast(R.string.setup_message);
+            return;
+        }
+        if (!"content".equals(file.getScheme())) {
+            return;
+        }
+        new Thread(() -> {
+            String said = upload(town, device, file);
+            runOnUiThread(() -> Toast.makeText(this, said, Toast.LENGTH_LONG).show());
+        }).start();
+    }
+
+    /** Reads the shared file, never past UPLOAD_CAP, and posts it. Returns what to tell the owner: the town's own words when it answered. */
+    private String upload(String town, String device, Uri file) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (InputStream in = getContentResolver().openInputStream(file)) {
+            if (in == null) {
+                return UNREADABLE;
+            }
+            byte[] buffer = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                bytes.write(buffer, 0, n);
+                if (bytes.size() > UPLOAD_CAP) {
+                    return TOO_BIG;
+                }
+            }
+        } catch (IOException | SecurityException e) {
+            return UNREADABLE;
+        }
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(town + "/api/uploads").openConnection();
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(UPLOAD_TIMEOUT_MS);
+            // A request that carries the device cookie never follows a redirect to another host.
+            conn.setInstanceFollowRedirects(false);
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setFixedLengthStreamingMode(bytes.size());
+            conn.setRequestProperty("Cookie", DEVICE_COOKIE + "=" + device);
+            // The tunnel gateway takes a write only with the town's own Origin and the action header, as the town page sends them.
+            conn.setRequestProperty("Origin", town);
+            conn.setRequestProperty("X-Town-Action", "owner");
+            conn.setRequestProperty("Content-Type", "application/octet-stream");
+            // The name is a title only; the town stores the file under its own id.
+            conn.setRequestProperty("X-File-Name", URLEncoder.encode(displayName(file), "UTF-8").replace("+", "%20"));
+            try (OutputStream out = conn.getOutputStream()) {
+                bytes.writeTo(out);
+            }
+            int status = conn.getResponseCode();
+            InputStream body = status < 400 ? conn.getInputStream() : conn.getErrorStream();
+            JSONObject reply = new JSONObject(body == null ? "{}" : readText(body));
+            return status == HttpURLConnection.HTTP_OK ? SAVED + reply.optString("title")
+                    : reply.optString("error", getString(R.string.offline_message));
+        } catch (IOException | JSONException e) {
+            return getString(R.string.offline_message);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    /** The shared file's name as the sending app gives it. */
+    private String displayName(Uri file) {
+        try (Cursor row = getContentResolver().query(file, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (row != null && row.moveToFirst() && !row.isNull(0)) {
+                return row.getString(0);
+            }
+        } catch (RuntimeException e) {
+            // A provider without the column: the last path segment below.
+        }
+        String last = file.getLastPathSegment();
+        return last == null || last.isEmpty() ? "Shared file" : last;
     }
 
     private static String readText(InputStream in) throws IOException {

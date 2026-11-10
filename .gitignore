@@ -1,5 +1,6 @@
 node_modules/
 data/
+data-team-*/
 .env
 .env.*
 !.env.example
@@ -7,7 +8,9 @@ data/
 .DS_Store
 town.local.json
 dist-desktop/
-dist-android/
+# The signed APK is tracked, so a clean checkout and the release workflow ship it (src/android-apk.ts serves it). Rebuild: npm run android.
+dist-android/*
+!dist-android/Clowder.apk
 .claude/worktrees/
 build-info.json
 hermes-runtime/

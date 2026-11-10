@@ -14,6 +14,7 @@ import {allRoles} from '../src/roles.ts';
 import {Store} from '../src/store.ts';
 import type {Provider} from '../src/provider.ts';
 import type {ToolRuntime} from '../src/tool-runtimes.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
 const tmp = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
@@ -27,7 +28,7 @@ writeFileSync(script, `let s = ''; process.stdin.on('data', d => s += d); proces
 });\n`);
 if (win) writeFileSync(claude, `@"${process.execPath}" "${script}" %*\r\n`); else { writeFileSync(claude, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`); chmodSync(claude, 0o755); }
 const runtime: ToolRuntime = {kind: 'claude', executable: claude, defaultModel: 'haiku', fastModel: 'haiku', workspaceRoot: tmp('browser-accounts-ws-')};
-async function until(fn: () => boolean, ms = 60_000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 20)); } assert.fail('Timed out'); }
+const until = untilEvery(20, 60000);
 // One browse call for the https address in the task, then done. A restarted task names no address, so it only finishes.
 const provider: Provider = async messages => {
   const asked = String([...messages].reverse().find((m: any) => m.role === 'user')?.content ?? ''), url = /https:\/\/\S+/.exec(asked)?.[0];

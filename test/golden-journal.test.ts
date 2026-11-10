@@ -41,9 +41,14 @@ test('replaying the golden journal gives the frozen state hash', () => {
   assert.equal(stateHash(store.state), golden('state.sha256').trim());
 });
 
+// Types apply() gained after the fixture froze (plan 9.2). make.ts already writes them, so the next regeneration covers them and this list goes;
+// until then test/suggestion-events.test.ts replays each one. Keeping the fixture frozen is what makes the hash prove old replay did not move.
+const NEWER_THAN_FIXTURE = new Set(['suggestion.raised', 'suggestion.closed', 'suggestion.started', 'suggestion.dismissed', 'owner.step.tick']);
+
 test('every event type apply() handles appears in the golden journal', () => {
   const inFixture = new Set(golden('events.jsonl').split('\n').filter(Boolean).map(l => JSON.parse(l).type));
-  const applied = appliedTypes();
+  for (const t of NEWER_THAN_FIXTURE) assert.ok(!inFixture.has(t), `${t} is in the fixture now; take it off NEWER_THAN_FIXTURE`);
+  const applied = new Set([...appliedTypes()].filter(t => !NEWER_THAN_FIXTURE.has(t)));
   assert.ok(applied.size >= 40, `apply() handles ${applied.size} types; the scan found too few`);
   const missing = [...applied].filter(t => !inFixture.has(t));
   assert.deepEqual(missing, [], 'types with no event in the fixture');

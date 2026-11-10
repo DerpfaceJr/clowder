@@ -1,13 +1,13 @@
 // Routines (plan 3.1 and 3.8): a prompt a cat runs on its own, on a schedule in the owner's timezone, on Run now or from its webhook.
-// ☰ > Routines opens this panel. It reads GET /api/routines and writes through the owner routes in src/routines.ts. Routines are not
+// The Mayor's corner opens this panel (its Routines chip, Options > Manage, /routines). It reads GET /api/routines and writes through the owner routes in src/routines.ts. Routines are not
 // in the town state (their webhook hashes stay off it), so the list is read when the panel opens, after each change, and while it is
 // open whenever the town changes. A webhook link is made and shown on the host computer only, once. The pure helpers are exported for
 // Node tests; the DOM is built with createElement and textContent only, so a title or a prompt can never become markup.
 import {el} from './projects-panel.js';
 import {ago} from './quests-panel.js';
 import {confirmDialog} from './dialogs.js';
-import {registerSettingsSection} from './settings-menu.js';
 import {createListener, speakableText} from './briefing-listen.js';
+import {oneLiner} from './one-liner.js';
 
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 // The schedule picker, in reading order. It reads as a sentence with the day and time beside it: "Every week on Monday at 09:00".
@@ -101,6 +101,34 @@ export function routineFacts(routine, zone, {now = Date.now(), locale} = {}) {
   return {next, last, tokens};
 }
 
+// Plan 11.14 (F8): a run is its task (src/routines.ts runs, newest first), so its status says whether it worked. In-flight runs say when
+// they started; a failed or interrupted one offers Retry (the existing Run now), the others Open (the run's thread).
+const RUN_WORDS = {done: 'Done', failed: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', queued: 'Waiting to start', running: 'Running', waiting: 'Waiting for you', waiting_child: 'Running'};
+const RUN_LIVE = ['queued', 'running', 'waiting', 'waiting_child'];
+const RUN_FAILED = ['failed', 'interrupted'];
+const TRIGGER_WORDS = {schedule: 'on schedule', 'catch-up': 'run late after a missed time', manual: 'Run now', webhook: 'from its webhook link'};
+
+/** One run in words: "Done 2 h ago", "Running, started 1 min ago". A run whose task is not in the town has no status and reads as a time. */
+export function runWords(run, now = Date.now()) {
+  if (!run?.status) return ago(run?.at, now);
+  const word = RUN_WORDS[run.status] ?? 'Running';
+  return RUN_LIVE.includes(run.status) ? `${word}, started ${ago(run.at, now)}` : `${word} ${ago(run.at, now)}`;
+}
+
+/**
+ * The card's Last run, from the newest run: {text, action, task}. A failed or interrupted run reads "Failed · <reason>" with Retry; any other
+ * run with a status offers Open. No run yet: fallback, the time of a skipped slot or "Not run yet" (routineFacts).
+ */
+export function lastRun(routine, {now = Date.now(), reason = '', fallback = 'Not run yet'} = {}) {
+  const run = list(routine?.runs)[0];
+  if (!run) return {text: fallback, action: null, task: null};
+  if (RUN_FAILED.includes(run.status)) return {text: [RUN_WORDS[run.status], reason].filter(Boolean).join(' · '), action: 'retry', task: run.task};
+  return {text: runWords(run, now), action: run.status ? 'open' : null, task: run.task};
+}
+
+/** A row of the last-runs list: "Done 2 h ago · on schedule". */
+export const runRow = (run, now = Date.now()) => [runWords(run, now), TRIGGER_WORDS[run?.trigger]].filter(Boolean).join(' · ');
+
 /** The form's fields as the POST body, or the first problem with them. A blank budget means none. */
 export function routineDraft({title, prompt, cat, mode, budget, enabled = true, when = NEW_WHEN, timezone} = {}) {
   const name = String(title ?? '').trim();
@@ -135,7 +163,7 @@ export function defaultMode(models, townDefault) {
   if (townDefault?.usable && ids.includes(townDefault.provider)) return townDefault.provider;
   return ids.find(id => id !== 'demo') ?? 'demo';
 }
-/** The ☰ row's subtitle. */
+/** A one-line summary of the routines: none yet, or how many run. */
 export function rowSummary(routines) {
   const all = list(routines);
   if (!all.length) return 'Run a prompt on a schedule';
@@ -163,7 +191,8 @@ const h = (tag, props, ...children) => el(tag, props, children.flat().filter(c =
  */
 export function createRoutinesPanel({doc = document, win = globalThis.window, fetchImpl = (...args) => fetch(...args), town = () => null, onOpenChat = () => {}, ask = confirmDialog, listener = createListener(win)} = {}) {
   injectStyles(doc);
-  const ui = {routines: [], timezone: null, loaded: false, denied: null, view: 'list', editing: null, busy: new Set(), msgs: new Map(), hooks: new Map(), banner: null, key: ''};
+  // reasons: a failed or interrupted run's task id to its reason, read once from its thread (the routines list carries the status only).
+  const ui = {routines: [], timezone: null, loaded: false, denied: null, view: 'list', editing: null, busy: new Set(), msgs: new Map(), hooks: new Map(), reasons: new Map(), banner: null, key: ''};
   // lastFocus: the data-key of the list control the owner last focused, so a repaint can put focus back on it.
   let refreshing = false, again = false, townTimer = 0, lastFocus = null;
 
@@ -201,7 +230,7 @@ export function createRoutinesPanel({doc = document, win = globalThis.window, fe
   // Closing forgets what was on screen, a webhook link included: the next open reads the list again.
   dialog.addEventListener('close', () => {
     clearTimeout(townTimer); townTimer = 0; lastFocus = null; listener.stop();
-    ui.view = 'list'; ui.editing = null; ui.hooks.clear(); ui.msgs.clear(); ui.banner = null; ui.key = '';
+    ui.view = 'list'; ui.editing = null; ui.hooks.clear(); ui.msgs.clear(); ui.reasons.clear(); ui.banner = null; ui.key = '';
     formView.hidden = true; formView.replaceChildren(); listView.hidden = false; listView.replaceChildren();
   });
   // While open, the town's own changes (a run starting or ending) re-read the list, a second apart at most.
@@ -227,13 +256,18 @@ export function createRoutinesPanel({doc = document, win = globalThis.window, fe
       if (!r.ok) throw Object.assign(new Error(r.data.error || 'Routines could not load.'), {status: r.status});
       ui.routines = list(r.data.routines); ui.timezone = typeof r.data.timezone === 'string' ? r.data.timezone : null; ui.loaded = true; ui.denied = false;
       ui.msgs.delete('page');
+      // A last run that failed names its reason: the run task's result, from its thread. Read once per run; a failed read leaves it blank.
+      await Promise.all(ui.routines.map(x => list(x.runs)[0]).filter(run => RUN_FAILED.includes(run?.status) && !ui.reasons.has(run.task)).map(async run => {
+        const t = await read(`/api/threads/${enc(run.task)}?limit=1`).catch(() => null);
+        ui.reasons.set(run.task, t?.ok ? oneLiner(list(t.data.tasks).find(x => x.id === run.task)?.result, 80) : '');
+      }));
     } catch (error) {
       if (error.status === 403) ui.denied = true;
       ui.msgs.set('page', {text: error.message || 'Routines could not load.', bad: true});
     } finally {
       refreshing = false;
     }
-    const key = JSON.stringify([ui.routines, ui.timezone, [...ui.msgs], ui.denied]);
+    const key = JSON.stringify([ui.routines, ui.timezone, [...ui.msgs], ui.denied, [...ui.reasons]]);
     if (key !== ui.key) { ui.key = key; paintList(); }
     if (again) { again = false; await refresh(); }
   }
@@ -290,15 +324,43 @@ export function createRoutinesPanel({doc = document, win = globalThis.window, fe
       h('p', {className: 'rt-when', text: describeSchedule(r.schedule, ui.timezone)}),
       h('p', {className: 'rt-who', text: `${catName(r.cat)} · ${modelName(r.mode)}${r.hook ? ' · webhook link on' : ''}`}),
       r.note ? h('p', {className: 'cx-note', text: r.note}) : null,
-      h('dl', {className: 'rt-facts'}, fact('Next run', facts.next), fact('Last run', facts.last), fact(r.tokenBudget ? 'Tokens used of budget' : 'Tokens used', facts.tokens)),
+      h('dl', {className: 'rt-facts'}, fact('Next run', facts.next), lastRunFact(r, facts.last), fact(r.tokenBudget ? 'Tokens used of budget' : 'Tokens used', facts.tokens)),
       h('div', {className: 'rt-actions'},
         run,
         button('Edit', {key: `${r.id}:edit`, onclick: () => showForm(r)}),
         button(r.hook ? 'New webhook link' : 'Webhook link', {key: hookKey, onclick: () => void makeHook(r)}),
         button('Remove', {className: 'rt-remove', key: removeKey, onclick: () => void remove(r)})),
+      runsBox(r),
       message(r.id),
       hookBox(r),
       briefingBox(r));
+  }
+
+  // Last run says whether it worked (plan 11.14): Retry runs it again as Run now does; Open shows the run's thread. "quiet", not rt-link:
+  // the list's click handler opens a cat's chat for every rt-link.
+  function lastRunFact(r, fallback) {
+    const line = lastRun(r, {reason: ui.reasons.get(list(r.runs)[0]?.task), fallback});
+    let action = null;
+    if (line.action === 'retry') {
+      action = button('Retry', {className: 'quiet', key: `${r.id}:retry`, attrs: {'aria-label': `Retry ${r.title}`}, onclick: () => void runNow(r)});
+      if (r.running || ui.busy.has(`${r.id}:run`)) action.disabled = true;
+    } else if (line.action === 'open') {
+      action = button('Open', {className: 'quiet', key: `${r.id}:open`, attrs: {'aria-label': `Open the last run of ${r.title}`}, onclick: () => openRun(line.task)});
+    }
+    return h('div', {className: 'rt-last', attrs: {'data-run': line.action ?? 'none'}}, h('dt', {text: 'Last run'}), h('dd', {}, line.text, action ? ' ' : null, action));
+  }
+  // The last runs, newest first, folded under the card. Each opens its thread.
+  function runsBox(r) {
+    const runs = list(r.runs);
+    if (!runs.length) return null;
+    return h('details', {className: 'rt-runs'}, h('summary', {text: `Last ${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`}),
+      h('ol', {}, runs.map((run, i) => h('li', {attrs: {'data-task': run.task}}, runRow(run), run.status ? ' ' : null,
+        run.status ? button('Open', {className: 'quiet', key: `${r.id}:run-${i}`, attrs: {'aria-label': `Open the run: ${runRow(run)}`}, onclick: () => openRun(run.task)}) : null))));
+  }
+  // #thread=<task> opens that run's thread in the chat panel (app.js takeLink), as people-panel.js does.
+  function openRun(task) {
+    dialog.close();
+    if (win?.location) win.location.hash = `thread=${enc(task)}`;
   }
 
   // A briefing routine's latest result, with Listen: the browser reads it aloud, and the button says Stop while it does.
@@ -496,7 +558,7 @@ export function createRoutinesPanel({doc = document, win = globalThis.window, fe
     await refresh();
   }
 
-  // Only an owner device gets the list; a viewer's 403 keeps the ☰ row hidden.
+  // Only an owner device gets the list; a viewer's 403 keeps the chat's Routines entries hidden.
   async function probe() {
     try { await refresh(); } catch { /* the row stays as it is */ }
     return ui.denied === false;
@@ -505,17 +567,12 @@ export function createRoutinesPanel({doc = document, win = globalThis.window, fe
   return {open, close: () => dialog.close(), refresh, probe, summary: () => (ui.denied === false ? rowSummary(ui.routines) : ''), dialog};
 }
 
-/** ☰ > Routines: one row that opens the panel, shown to owner devices only. Called once by app.js. */
+/**
+ * Routines live in the Mayor's corner (docs/design/menu-chat-mailman.md): its chip, Options > Manage, /routines and the palette open this
+ * panel. Owner devices only: ready resolves true once the routes answer, and the chat offers it from then on. Called once by app.js.
+ */
 export function initRoutinesPanel(options = {}) {
   const panel = createRoutinesPanel(options);
-  let fallback = null;
-  registerSettingsSection('routines', 'Routines', container => {
-    fallback = el('button', {text: 'Routines…', attrs: {type: 'button', id: 'routines-open', 'data-owner': '', 'aria-haspopup': 'dialog'}});
-    fallback.onclick = () => void panel.open();
-    container.append(fallback);
-  }, {icon: '↻', summary: panel.summary, action: () => void panel.open()});
-  void panel.probe().then(owner => { if (fallback) fallback.hidden = !owner; });
-  // The row's subtitle is read when the menu draws its list, so the count is fetched again as the menu opens.
-  (options.doc ?? document).getElementById('menu-toggle')?.addEventListener('click', () => void panel.refresh());
+  panel.ready = panel.probe().catch(() => false);
   return panel;
 }

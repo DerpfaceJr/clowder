@@ -103,7 +103,7 @@ test('a failed root reads failed, and an interrupted root reads stopped', () => 
   const s=fixture();
   assert.equal(projects(s).find(p=>p.id==='R4')!.status,'failed');
   s.tasks.find(t=>t.id==='R4')!.status='interrupted';
-  assert.equal(projects(s).find(p=>p.id==='R4')!.status,'stopped');
+  assert.equal(projects(s).find(p=>p.id==='R4')!.status,'interrupted');
 });
 
 test('a running request with no decision pending reads running', () => {
@@ -138,4 +138,16 @@ test('a retired cat keeps its name in an old project', () => {
   const retiredCat={...cat('scribe','Scribe'),retiredAt:minute(50),council:'c1',reason:'done',roads:[]};
   const s=state({cats:[cat('mayor','Mayor')],retiredCats:[retiredCat as any],tasks:[task('RS','mayor','owner','Write the notes','done'),task('CS','scribe','mayor','Take notes','done','RS')]});
   assert.deepEqual(projects(s)[0].cats.map(c=>c.name),['Mayor','Scribe']);
+});
+
+test('a request retried to done reads done; its newest owner turn speaks for it (plan 11.1)', () => {
+  const s=fixture();
+  const root=s.tasks.find(t=>t.id==='R4')!;root.status='interrupted';
+  s.tasks.push(task('R4-retry',root.cat,'owner',root.text,'running','R4'));
+  assert.equal(projects(s).find(p=>p.id==='R4')!.status,'running');
+  s.tasks.find(t=>t.id==='R4-retry')!.status='done';
+  assert.equal(projects(s).find(p=>p.id==='R4')!.status,'done');
+  // A child a cat delegated is not an owner turn: it never speaks for the request.
+  s.tasks.push(task('R4-helper','reviewer',root.cat,'Check it','failed','R4'));
+  assert.equal(projects(s).find(p=>p.id==='R4')!.status,'done');
 });

@@ -13,13 +13,18 @@ export const NOT_RUNNING='Tailscale is not signed in, or MagicDNS is off. Sign i
 export const NO_CERTIFICATES='Tailscale HTTPS certificates are not enabled. In the Tailscale admin console, open DNS and enable "HTTPS Certificates", then enable remote access again.';
 
 export const statusArgs=()=>['status','--json'];
-export const serveArgs=(port:number)=>{
-  if(!Number.isSafeInteger(port)||port<1||port>65535)throw new Error('Remote port must be a valid TCP port.');
-  return ['serve','--bg','--https=443',`http://127.0.0.1:${port}`];
-};
-export const serveOffArgs=()=>['serve','--https=443','off'];
+const tcpPort=(port:number,what:string)=>{if(!Number.isSafeInteger(port)||port<1||port>65535)throw new Error(`${what} must be a valid TCP port.`);return port;};
+// The HTTPS port Serve publishes on (plan 10.2). The private town keeps 443, so its address and every pairing stay as they are. A team instance
+// (CAT_TEAM) uses its own remote port, which no other Clowder on this PC holds (desktop/teams.cjs), so two serve entries never replace each other.
+// ponytail: a team whose remote port was busy at launch (desktop/main.cjs freePort) gets a new address too; pin it in teams.json if that bites.
+const PRIVATE_HTTPS=443;
+export const servePort=(remotePort:number,team?:string)=>team?remotePort:PRIVATE_HTTPS;
+export const serveArgs=(port:number,https=PRIVATE_HTTPS)=>['serve','--bg',`--https=${tcpPort(https,'Tailscale HTTPS port')}`,`http://127.0.0.1:${tcpPort(port,'Remote port')}`];
+export const serveOffArgs=(https=PRIVATE_HTTPS)=>['serve',`--https=${tcpPort(https,'Tailscale HTTPS port')}`,'off'];
 // The command Clowder runs, as the Devices dialog shows it.
-export const serveCommand=(port:number)=>['tailscale',...serveArgs(port)].join(' ');
+export const serveCommand=(port:number,https=PRIVATE_HTTPS)=>['tailscale',...serveArgs(port,https)].join(' ');
+// The tailnet address: URL drops :443, so the private town's origin is today's https://<machine>.<tailnet>.ts.net exactly.
+export const serveOrigin=(dns:string,https=PRIVATE_HTTPS)=>new URL(`https://${dns}:${tcpPort(https,'Tailscale HTTPS port')}`).origin;
 
 // Returns the machine's MagicDNS name without the trailing dot. Any missing or unusable state is one message.
 export function parseTailscaleStatus(text:string):string{
@@ -34,9 +39,9 @@ export function parseTailscaleStatus(text:string):string{
 // What the Devices dialog shows before anything is published (plan 5.1): installed, signed in, HTTPS certificates on, and the address the
 // town would get. Read-only: `tailscale status --json` and nothing else, so it never serves and never fails.
 // https: CertDomains lists the names Tailscale will get certificates for, null until HTTPS is on in the admin console. An older client
-// without the field says nothing either way (undefined).
+// without the field says nothing either way (undefined). httpsPort: the port this instance would serve on (servePort), part of the address.
 export type TailscaleCheck={installed:boolean;signedIn:boolean;https?:boolean;origin?:string};
-export async function detectTailscale(run:Runner=execRunner):Promise<TailscaleCheck>{
+export async function detectTailscale(run:Runner=execRunner,httpsPort=PRIVATE_HTTPS):Promise<TailscaleCheck>{
   for(const exe of TAILSCALE_EXECUTABLES){
     let result:Run;
     try{result=await run(exe,statusArgs());}
@@ -45,7 +50,7 @@ export async function detectTailscale(run:Runner=execRunner):Promise<TailscaleCh
     try{dns=parseTailscaleStatus(result.stdout);}catch{return {installed:true,signedIn:false};}
     const list=JSON.parse(result.stdout).CertDomains;
     const https=list===undefined?undefined:Array.isArray(list)&&list.some(name=>String(name).replace(/\.$/,'').toLowerCase()===dns);
-    return {installed:true,signedIn:true,https,origin:`https://${dns}`};
+    return {installed:true,signedIn:true,https,origin:serveOrigin(dns,httpsPort)};
   }
   return {installed:false,signedIn:false};
 }
@@ -65,7 +70,8 @@ export class TailscaleServe implements RemoteTunnel{
   private exe?:string;
   private served=false;
   private generation=0;
-  constructor(private run:Runner=execRunner){}
+  // https: the HTTPS port to publish on (servePort): 443 for the private town, the remote port for a team instance.
+  constructor(private run:Runner=execRunner,private https=PRIVATE_HTTPS){}
 
   start(port:number):Promise<string>{
     if(this.origin)return Promise.resolve(this.origin);
@@ -82,7 +88,7 @@ export class TailscaleServe implements RemoteTunnel{
   }
 
   private async connect(port:number,generation:number):Promise<string>{
-    const args=serveArgs(port);
+    const args=serveArgs(port,this.https);
     const {exe,dns}=await this.findCli();
     this.exe=exe;
     const result=await this.call(exe,args);
@@ -92,7 +98,7 @@ export class TailscaleServe implements RemoteTunnel{
     }
     this.served=true;
     if(generation!==this.generation){await this.turnOff();throw new Error('Remote access stopped.');}
-    return `https://${dns}`;
+    return serveOrigin(dns,this.https);
   }
 
   // Tries each known executable. Only a missing executable moves on to the next candidate.
@@ -111,12 +117,12 @@ export class TailscaleServe implements RemoteTunnel{
     catch(error){if((error as NodeJS.ErrnoException)?.code==='ENOENT')throw new Error(NOT_INSTALLED);throw error;}
   }
 
-  // Removes only our port-443 serve entry, and only if this instance published one.
+  // Removes only our own HTTPS port's serve entry, and only if this instance published one: another instance's entry stays.
   private async turnOff():Promise<string|undefined>{
     const exe=this.exe;
     if(!exe||!this.served)return undefined;
     this.served=false;
-    const result=await this.call(exe,serveOffArgs()).catch(error=>({code:1,stdout:'',stderr:error.message}));
+    const result=await this.call(exe,serveOffArgs(this.https)).catch(error=>({code:1,stdout:'',stderr:error.message}));
     return result.code===0?undefined:`Could not turn off Tailscale serve: ${firstLine(`${result.stdout}\n${result.stderr}`)}`;
   }
 

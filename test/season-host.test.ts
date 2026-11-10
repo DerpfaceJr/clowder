@@ -10,15 +10,13 @@ import {Pairing} from '../src/pairing.ts';
 import {runSeason,seasonLock} from '../src/season.ts';
 import {SeasonHost,registerSeasonRoutes} from '../src/season-host.ts';
 import type {Launcher} from '../src/season-host.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const tmp=()=>mkdtempSync(join(tmpdir(),'season-host-'));
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-async function until(check:()=>boolean,ms=10000){
-  for(let waited=0;waited<ms;waited+=50){if(check())return;await sleep(50);}
-  assert.fail('condition not reached in time');
-}
+const until = untilEvery(50);
 
 // A stand-in season: it holds a lock like the real runner, exits cleanly with a pause line, or fails.
 const FAKE=join(tmp(),'fake-season.mjs');

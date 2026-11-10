@@ -21,8 +21,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The type check and the tests run here, apart from the signing job. A job with id-token: write hands every step, and so every package's
+  # install script and every test, what it takes to mint the release environment's OIDC token and sign as the publisher. This job has neither
+  # the environment nor the permission, and only contents: read from the top of the file.
+  verify:
+    if: github.repository == 'DerpfaceJr/clowder'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Tag matches package.json
+        shell: pwsh
+        run: node scripts/check-release-tag.mjs
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
   release:
     if: github.repository == 'DerpfaceJr/clowder'
+    needs: verify
     runs-on: windows-latest
     timeout-minutes: 60
     environment: release
@@ -59,9 +82,10 @@ jobs:
           $missing = @('TENANT','CLIENT','SUBSCRIPTION','ENDPOINT','ACCOUNT','CERT_PROFILE','PUBLISHER') | Where-Object { -not "$([Environment]::GetEnvironmentVariable($_))".Trim() }
           if ($missing) { throw "Empty environment variables in 'release': $($missing -join ', ')" }
 
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm test
+      # No install scripts in the job that can sign: the packages are unpacked and nothing of theirs runs at install. electron-builder
+      # fetches the Electron it packages by itself, and esbuild (under tsx) finds its binary in its platform package without its script.
+      # Proof, 2026-11-10: a local `npm ci --ignore-scripts` followed by this build passed scripts/check-desktop-build.mjs (n=1).
+      - run: npm ci --ignore-scripts
 
       # Right before the build: the federated sign-in is not refreshed, so it should be fresh when the first file is signed.
       # Invoke-TrustedSigning (installed by electron-builder) authenticates with DefaultAzureCredential, which picks up this Azure CLI login.

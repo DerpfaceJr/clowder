@@ -8,6 +8,7 @@ import Fastify from 'fastify';
 import {installAccess,isOwner} from '../src/access.ts';
 import {Pairing,type RemoteConfig} from '../src/pairing.ts';
 import {installRemoteAccess} from '../src/remote-access.ts';
+import {ListNotices} from '../src/chat-channel.ts';
 import {PushService,RateLimiter,buildPayload,clean,encryptPayload,pushEndpointAllowed,registerPushRoutes,vapidAuthorization,verifyVapidSignature,type Sender} from '../src/push.ts';
 
 const remoteConfig:RemoteConfig=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8')).remote;
@@ -140,12 +141,18 @@ test('subscriptions persist across restarts and can be removed',()=>{
   try{
     const keys=clientKeys();const endpoint='https://fcm.googleapis.com/fcm/send/device-1';
     const service=new PushService({dataDir:data,send:okSender([])});
-    assert.deepEqual(service.subscribe({endpoint,keys:{p256dh:keys.p256dh,auth:keys.auth},kinds:{mayor:false}}).kinds,{approvals:true,mayor:false,seasons:true,routines:true});
+    assert.deepEqual(service.subscribe({endpoint,keys:{p256dh:keys.p256dh,auth:keys.auth},kinds:{mayor:false}}).kinds,{approvals:true,mayor:false,seasons:true,routines:true,problems:true});
     assert.equal(new PushService({dataDir:data,send:okSender([])}).count(),1);
     const again=new PushService({dataDir:data,send:okSender([])});
     assert.equal(again.unsubscribe(endpoint),true);
     assert.equal(new PushService({dataDir:data,send:okSender([])}).count(),0);
   }finally{rmSync(data,{recursive:true,force:true});}
+});
+
+test('server.ts: both listeners save a subscription under the device that made it, so revoking a Same Wi-Fi owner phone drops it',()=>{
+  const src=readFileSync(new URL('../src/server.ts',import.meta.url),'utf8');
+  assert.ok(src.includes('registerPushRoutes(app,{service:push,allowed:isOwner,device:access.device})'),'the main listener, which Same Wi-Fi devices use');
+  assert.ok(src.includes('registerPushRoutes(remoteApp,{service:push,allowed:isOwner,device:remoteAccess.device})'),'the tunnel listener');
 });
 
 test('owner-only on the main app, paired owner device on the remote app, 403 otherwise',async()=>{
@@ -205,20 +212,21 @@ test('store events become encrypted pushes for the subscribed kinds only, and a 
     const service=new PushService({dataDir:data,send:okSender(calls,201),now:()=>now,windowMs:30_000,later:()=>undefined});
     const keys=clientKeys();
     service.subscribe({endpoint:'https://fcm.googleapis.com/fcm/send/a',keys:{p256dh:keys.p256dh,auth:keys.auth},kinds:{approvals:true,mayor:false,seasons:true}});
-    const store={state:{events:[] as {id:string;type:string;data:any}[],cats:[{id:'mira',name:'Mira'}]},listeners:new Set<()=>void>()};
+    const store={state:quietState({cats:[{id:'mira',name:'Mira'}]}) as any,listeners:new Set<()=>void>()};
     service.attach(store);
-    const emit=(e:{id:string;type:string;data:any})=>{store.state.events.push(e);for(const l of store.listeners)l();};
-    emit({id:'e1',type:'approval.requested',data:{id:'a1',cat:'mira',question:'Shall I plant the <north> field?',status:'pending'}});
+    // A decision is listed by quests() from state.approvals; the event only says the store changed (11.10).
+    const emit=(e:{id:string;type:string;data:any},approval?:Record<string,unknown>)=>{store.state.events.push(e);if(approval)store.state.approvals.push(approval);for(const l of store.listeners)l();};
+    emit({id:'e1',type:'approval.requested',data:{id:'a1',cat:'mira',question:'Shall I plant the north field?',status:'pending'}},{id:'a1',cat:'mira',question:'Shall I plant the north field?',status:'pending'});
     await settle();
     assert.equal(calls.length,1);
     const text=JSON.parse(decrypt(calls[0].body,keys.ua.getPrivateKey(),Buffer.from(keys.auth,'base64url')).toString());
-    assert.deepEqual(text,{title:'Clowder',body:'Mira needs you: Shall I plant the ‹north› field?',url:'/#approval=a1',tag:'approval-a1'});
+    assert.deepEqual(text,{title:'Clowder',body:'Needs you: Shall I plant the north field',url:'/#item=approval%3Aa1',tag:'item-approval:a1'});
     assert.match(calls[0].headers.Authorization,/^vapid t=/);
     emit({id:'e2',type:'message',data:{from:'mayor',to:'owner',text:'Hello'}});
     await settle();
     assert.equal(calls.length,1,'mayor kind is switched off for this subscription');
     now+=5_000;
-    emit({id:'e3',type:'approval.requested',data:{id:'a2',cat:'mira',question:'Second',status:'pending'}});
+    emit({id:'e3',type:'approval.requested',data:{id:'a2',cat:'mira',question:'Second',status:'pending'}},{id:'a2',cat:'mira',question:'Second',status:'pending'});
     await settle();
     assert.equal(calls.length,1,'inside the window the second approval is held');
     now+=25_000;
@@ -262,3 +270,78 @@ test('season completion pushes once, and existing finished seasons are not annou
     service.close();
   }finally{rmSync(data,{recursive:true,force:true});}
 });
+
+// 11.10: notices come from the Needs-you list (quests()), not from events. Fixtures are plain states; the ids are the list's own.
+const quietState=(extra:Record<string,unknown>={})=>({events:[],cats:[{id:'mabel',name:'Mabel'}],retiredCats:[],approvals:[],goals:[],councils:[],ownerSteps:[],hiddenQuests:{},handoffs:{},...extra});
+const approvalOf=(id:string,over:Record<string,unknown>={})=>({id,cat:'mabel',status:'pending',question:`Question ${id}?`,gate:'connector',effectClass:'read',options:['Allow once','Deny'],task:'t1',...over});
+const failedProject={id:'p1',title:'Launch post',status:'failed',counts:{failed:1,tasks:2},updatedAt:'2026-11-09T10:00:00.000Z'};
+const pendingPurchase={id:'buy1',vendor:'Fishmonger',status:'pending',reason:'Fish for the Mayor',requestedAt:'2026-11-09T09:00:00.000Z',amountMinor:4000,currency:'USD',url:'https://fish.example/cart'};
+const openStep={id:'os1',title:'Connect GitHub',steps:'Sign in',at:'2026-11-09T08:00:00.000Z',status:'open',blocking:true};
+const extraInput={projects:[failedProject],purchases:[pendingPurchase],capabilities:[],seasons:[],models:null};
+
+test('11.10 parity: the announced ids are the needsYou ids, plus trouble under Problems, each once, every url /#item=<id>',async()=>{
+  const data=dir();
+  try{
+    const calls:{endpoint:string;headers:Record<string,string>;body:Buffer}[]=[];
+    const service=new PushService({dataDir:data,send:okSender(calls),windowMs:0,questInput:state=>({...extraInput,state,now:new Date('2026-11-09T12:00:00Z')}) as any});
+    const a=clientKeys(),b=clientKeys();
+    service.subscribe({endpoint:'https://fcm.googleapis.com/fcm/send/a',keys:{p256dh:a.p256dh,auth:a.auth}});
+    service.subscribe({endpoint:'https://fcm.googleapis.com/fcm/send/b',keys:{p256dh:b.p256dh,auth:b.auth},kinds:{problems:false}});
+    const state=quietState({approvals:[approvalOf('a1'),approvalOf('a2',{gate:'effect',options:undefined}),approvalOf('g1',{gate:'goal-removal'})],ownerSteps:[openStep]});
+    service.onStore({state:state as any,listeners:new Set()});
+    await settle();
+    const read=(keys:typeof a,call:typeof calls[number])=>JSON.parse(decrypt(call.body,keys.ua.getPrivateKey()!,Buffer.from(keys.auth,'base64url')).toString());
+    const toA=calls.filter(c=>c.endpoint.endsWith('/a')).map(c=>read(a,c));
+    const toB=calls.filter(c=>c.endpoint.endsWith('/b')).map(c=>read(b,c));
+    const ids=(ps:{url:string}[])=>ps.map(p=>decodeURIComponent(p.url.slice('/#item='.length)));
+    assert.deepEqual(ids(toA).sort(),['approval:a1','approval:a2','owner-step:os1','project:p1','purchase:buy1'].sort());
+    assert.deepEqual(ids(toB).sort(),['approval:a1','approval:a2','owner-step:os1','purchase:buy1'].sort(),'a Problems-off device gets no trouble item');
+    assert.ok(toA.every(p=>/^\/#item=/.test(p.url)));
+    assert.equal(toA.find(p=>p.url.includes('buy1'))!.actions,undefined,'a pending purchase has no buttons');
+    assert.equal(toA.find(p=>p.url.includes('a1'))!.actions?.length,2,'a connector read decision keeps its two buttons');
+    assert.match(toA.find(p=>p.url.includes('p1'))!.body,/^Your request 'Launch post' failed: 1 of 2 tasks failed\. Retry\?$/);
+    service.onStore({state:state as any,listeners:new Set()});
+    await settle();
+    assert.equal(calls.length,9,'a second look at the same list announces nothing');
+    service.close();
+  }finally{rmSync(data,{recursive:true,force:true});}
+});
+
+test('11.10: an id that leaves the list and comes back is announced again; a goal-removal suggestion never is',async()=>{
+  const data=dir();
+  try{
+    const calls:{endpoint:string;headers:Record<string,string>;body:Buffer}[]=[];
+    const service=new PushService({dataDir:data,send:okSender(calls),windowMs:0,questInput:state=>({projects:[],purchases:[],capabilities:[],seasons:[],models:null,state,now:new Date('2026-11-09T12:00:00Z')}) as any});
+    const keys=clientKeys();
+    service.subscribe({endpoint:'https://fcm.googleapis.com/fcm/send/c',keys:{p256dh:keys.p256dh,auth:keys.auth}});
+    const pending=quietState({approvals:[approvalOf('a1'),approvalOf('g1',{gate:'goal-removal'})]});
+    // No project or purchase here: only the decision is on the list.
+    service.onStore({state:pending as any,listeners:new Set()});
+    await settle();
+    const first=calls.length;
+    assert.equal(first,1,'a1 only: the goal-removal suggestion is not listed');
+    service.onStore({state:quietState({approvals:[approvalOf('a1',{status:'approved'})]}) as any,listeners:new Set()});
+    await settle();
+    assert.equal(calls.length,first,'a1 leaving the list sends nothing');
+    service.onStore({state:pending as any,listeners:new Set()});
+    await settle();
+    assert.equal(calls.length,first+1,'a1 back on the list is announced again');
+    service.close();
+  }finally{rmSync(data,{recursive:true,force:true});}
+});
+
+test('11.10 chat channels: ListNotices announces the same ids once each, with the link when a remote address exists',()=>{
+  const state=quietState({approvals:[approvalOf('a1'),approvalOf('g1',{gate:'goal-removal'})]});
+  const notices=new ListNotices(()=>'https://remote.example');
+  const first=notices.fresh(state as any);
+  assert.equal(first.length,1,'the goal-removal suggestion is not announced');
+  assert.equal(first[0]!.text,'Needs you: Question a1\n\nhttps://remote.example/#item=approval%3Aa1');
+  assert.deepEqual(first[0]!.buttons.map(b=>b.label),['Allow once','Deny']);
+  assert.deepEqual(notices.fresh(state as any),[],'a second look announces nothing');
+  notices.fresh(quietState({approvals:[approvalOf('a1',{status:'approved'})]}) as any);
+  assert.equal(notices.fresh(state as any).length,1,'back on the list, announced again');
+  const plain=new ListNotices();
+  assert.equal(plain.fresh(state as any)[0]!.text,'Needs you: Question a1');
+  assert.deepEqual(new ListNotices().fresh({...state,approvals:undefined} as any),[],'no approvals array lists none, and does not throw');
+})
+

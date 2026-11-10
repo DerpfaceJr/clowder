@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {Store} from '../src/store.ts';
 import {Town} from '../src/engine.ts';
 import {resolveLayout,townLayout,planSite,siteCentre,roadGap,groupReach,plazaOf,BOARD,FOUNTAIN} from '../public/hamlet-layout.js';
-import {oneLiner} from '../public/hologram.js';
+import {oneLiner} from '../public/one-liner.js';
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const raw=config.world.layout,L=resolveLayout(raw);
 const dir=()=>mkdtempSync(join(tmpdir(),'cat-hamlet-'));
@@ -84,9 +84,50 @@ test('the notice board, roof and all, clears the ring street and every walking p
 
 test('every door is on the network, and walking paths follow it between any two cats',()=>{
   const {store}=busyTown();const cats=store.state.cats.filter(c=>c.home),layout=townLayout(cats,store.state.groups,raw);
-  const roadPoints=new Set(layout.roads.flatMap((r:{points:number[][]})=>r.points.map(p=>p.join(','))));
+  // Rounded corners leave the road's line, never its paving; only the doorstep legs cross a home's own front garden.
+  const doorstep=(p:number[],...ends:any[])=>ends.some(e=>dist({x:p[0],z:p[1]},e.home)<L.stem+.6);
   for(const c of cats){const path=layout.visitPath(cats[0],c);assert.ok(path.length>2,`${c.id} is reachable`);
-    for(const p of path.slice(2,-2))if(!roadPoints.has(p.join(','))&&!store.state.groups.some(g=>dist({x:p[0],z:p[1]},g.site)<plazaOf(g.site,L)))assert.fail(`${c.id}: path leaves the roads at ${p}`);}
+    for(const p of path)if(!layout.paved(p[0],p[1])&&!doorstep(p,cats[0],c))assert.fail(`${c.id}: path leaves the paving at ${p}`);}
+});
+
+// ---------------------------------------------------------------- natural walking routes (smoothPath)
+const lengthOf=(p:number[][])=>p.slice(1).reduce((s,q,i)=>s+Math.hypot(q[0]-p[i][0],q[1]-p[i][1]),0);
+const turnAt=(p:number[][],i:number)=>{const a=Math.atan2(p[i][1]-p[i-1][1],p[i][0]-p[i-1][0]),b=Math.atan2(p[i+1][1]-p[i][1],p[i+1][0]-p[i][0]);return Math.abs(Math.atan2(Math.sin(b-a),Math.cos(b-a)));};
+function everyRoute(){
+  const {store}=busyTown();const cats=store.state.cats.filter(c=>c.home),layout=townLayout(cats,store.state.groups,raw),out=[];
+  for(const a of cats)for(const b of cats)if(a!==b)out.push({a,b,path:layout.visitPath(a,b),road:layout.roadPath(a,b)});
+  return {layout,routes:out};
+}
+const town=everyRoute();
+test('a rounded route starts and ends exactly where the road route does, on each cat’s stand point',()=>{
+  for(const {a,b,path,road} of town.routes){
+    assert.deepEqual(path[0],road[0],`${a.id} to ${b.id} starts elsewhere`);assert.deepEqual(path.at(-1),road.at(-1),`${a.id} to ${b.id} ends elsewhere`);
+  }
+});
+test('no rounded route enters a fountain, and none crosses a plaza through its middle',()=>{
+  for(const site of town.layout.sites){
+    const fountain=site.features.find((f:{kind:string})=>f.kind==='fountain'),middle=site.plaza*.25;
+    for(const {a,b,path} of town.routes){
+      for(const [p,q] of segs({points:path})){
+        if(fountain)assert.ok(segDist([fountain.x,fountain.z],p,q)>=FOUNTAIN.r+.4,`${a.id} to ${b.id} crosses the fountain`);
+        assert.ok(segDist([site.x,site.z],p,q)>=middle,`${a.id} to ${b.id} crosses ${site.group}'s plaza through its middle`);
+      }
+    }
+  }
+});
+test('rounded routes turn gently: at most 35 degrees between consecutive samples (the road routes turn up to 180)',()=>{
+  let raw=0;
+  for(const {a,b,path,road} of town.routes){
+    for(let i=1;i<path.length-1;i++)assert.ok(turnAt(path,i)<=35*Math.PI/180,`${a.id} to ${b.id} turns ${(turnAt(path,i)*180/Math.PI).toFixed(0)} degrees at ${path[i]}`);
+    for(let i=1;i<road.length-1;i++)raw=Math.max(raw,turnAt(road,i));
+  }
+  assert.ok(raw>Math.PI/2,'the road routes this test compares against do have sharp corners');
+});
+test('rounding never lengthens a route, and cuts at most half of it (doorstep loops only)',()=>{
+  const ratios=town.routes.map(({path,road})=>lengthOf(path)/lengthOf(road));
+  assert.ok(Math.max(...ratios)<=1+1e-9,`a route got longer: ${Math.max(...ratios)}`);
+  assert.ok(Math.min(...ratios)>=.5,`a route lost half its length: ${Math.min(...ratios)}`);
+  const mean=ratios.reduce((s,r)=>s+r,0)/ratios.length;assert.ok(mean>.85&&mean<1,`mean length ratio ${mean}`);
 });
 
 test('adding a home only adds a stem: every existing road point stays where it was',()=>{

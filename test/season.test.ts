@@ -150,3 +150,11 @@ test('the view lists REA as a known tool, and a repo request for its exact sourc
   assert.equal(requested?.tier,'sandbox');
   assert.equal(requested?.source,rea.source);
 });
+
+test('a season enrolls the town as it is now: founders, then recruits, without a retired cat',async()=>{
+  const dir=tmp(),ev=(type:string,data:any)=>JSON.stringify({type,data,at:new Date().toISOString()});
+  writeFileSync(join(dir,'events.jsonl'),[ev('founded',{cats:[{id:'mayor'}]}),ev('cat.created',{id:'builder'}),ev('cat.created',{id:'merchant'}),
+    ev('council.opened',{id:'c1',target:'merchant'}),ev('council.closed',{id:'c1',status:'retired'}),''].join('\n'));
+  await runSeason({name:'roster',mode:'demo',days:1,dataDir:dir,sharedDataDir:shared,config:loaded,workshop:null,stopAfterTicks:1});
+  assert.deepEqual(replay(readEvents(dir,'roster')).cats,['mayor','builder']);
+});

@@ -113,13 +113,13 @@ test('Remove asks first, then takes the token off this computer', async t => {
   assert.match(p.body().textContent, /Discord is removed\./);
 });
 
-test('☰ > Devices & AI links to Discord on the host only, right after Telegram, and app.js wires it', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+test('the Post office links to Discord on the host only, right after Telegram in Channels, and app.js wires it', () => {
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(html, />Telegram<\/button><button id="discord-open" data-owner data-host hidden aria-haspopup="dialog" data-note="[^"]+">Discord<\/button>/);
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(app, /const discordPanel=createDiscordPanel\(\{button:\$\('discord-open'\)\}\);\nvoid discordPanel\.probe\(\);/);
   assert.match(app, /discord:\(\)=>void discordPanel\.open\(\)/);
-  const css = readFileSync(new URL('../public/discord-panel.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/discord-panel.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.equal(/#[0-9a-f]{3,8}\b/i.test(css.replace(/#discord-dialog/g, '')), false, 'theme tokens only');
   assert.match(css, /#discord-dialog\{inset:0;width:100%;max-width:none;height:100dvh/, 'a full-screen page on phones');
 });

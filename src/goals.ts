@@ -1,7 +1,7 @@
 // Ongoing goals: the Mayor works a goal in rounds, with pauses between them. The round engine lives in engine.ts (Town);
 // this file holds the settings, the budget arithmetic, the round prompt and the owner-only routes.
 import type {FastifyInstance,FastifyReply,FastifyRequest} from 'fastify';
-import {oneLiner} from '../public/hologram.js';
+import {oneLiner} from '../public/one-liner.js';
 import {isOwner} from './access.ts';
 import type {Goal,State} from './store.ts';
 import type {Town} from './engine.ts';
@@ -182,6 +182,16 @@ export function registerGoalRoutes(app:FastifyInstance,opts:{town:()=>Town;decid
   app.post('/api/owner-steps/:id/done',{onRequest:decider,schema:{body:{type:'object',additionalProperties:false,properties:{note:{type:'string',maxLength:600}}}}},async req=>{
     const message=opts.town().ownerStepDone('owner',(req.params as {id:string}).id,String((req.body as {note?:string}|undefined)?.note??''),device(req));
     return {ok:true,message};
+  });
+  // Plan 11.9: the owner's ticks on an open step's lines. A tick from one device reads back on another.
+  app.get('/api/owner-steps/:id/ticks',{onRequest:decider},async req=>{
+    const step=opts.town().store.state.ownerSteps.find(s=>s.id===(req.params as {id:string}).id);
+    return {ticks:step?.ticks??[]};
+  });
+  app.post('/api/owner-steps/:id/tick',{onRequest:decider,schema:{body:{type:'object',required:['line','done'],additionalProperties:false,properties:{line:{type:'integer',minimum:0,maximum:99},done:{type:'boolean'}}}}},async req=>{
+    const body=req.body as {line:number;done:boolean};
+    const ticks=opts.town().ownerStepTick('owner',(req.params as {id:string}).id,body.line,body.done,device(req));
+    return {ok:true,ticks};
   });
   // The host or an owner device. Removing a step without doing it: a goal held for it resumes once no step is open.
   app.post('/api/owner-steps/:id/dismiss',{onRequest:decider},async req=>{

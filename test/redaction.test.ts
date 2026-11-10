@@ -9,13 +9,14 @@ import {Town} from '../src/engine.ts';
 import {allRoles} from '../src/roles.ts';
 import type {Provider} from '../src/provider.ts';
 import type {ConnectorRuntime} from '../src/connector-types.ts';
+import {untilEvery} from './helpers/until.ts';
 
 // Planted test values only. SAVED is 16 characters: below the generic 20-character rule, so only the by-value rule can mask it.
 const SAVED = 'Zq7pW2xK9mR4tLb8';
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
 const dir = mkdtempSync(join(tmpdir(), 'redaction-'));
 const newWorld = () => { const file = join(mkdtempSync(join(tmpdir(), 'world-')), 'events.jsonl'); return {file, store: new Store(file, allRoles(config))}; };
-async function until(fn: () => boolean, ms = 60_000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail('Timed out waiting for state transition'); }
+const until = untilEvery(10, 60000);
 const statusOf = (store: Store, id: string) => store.state.tasks.find(t => t.id === id)?.status;
 // Calls one tool, then answers; records what each model call saw (the recorder's own calls excluded).
 function oneCall(name: string, args: unknown) {

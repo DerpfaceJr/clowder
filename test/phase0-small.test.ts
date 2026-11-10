@@ -10,13 +10,14 @@ import {Town} from '../src/engine.ts';
 import {installStateGzip} from '../src/state-gzip.ts';
 import {buildStamp} from '../src/build-info.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config={...JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8')),maxParallelWork:3};
 const fixture=(provider:Provider)=>{
   const store=new Store(join(mkdtempSync(join(tmpdir(),'phase0-')),'events.jsonl'),config.cats);
   return {store,town:new Town(store,config,{test:provider})};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,5));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(5);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 const last=(messages:any[])=>String(messages.at(-1)?.content??'');

@@ -30,6 +30,9 @@ function readJson(file:string):any{
   return value;
 }
 
+/** The coin economy (seasons) is on only when economy.enabled is exactly true; a missing or odd value keeps it off. */
+export const economyOn=(config:any):boolean=>config?.economy?.enabled===true;
+
 export function loadConfig(root:string):any{
   const base=readJson(resolve(root,CONFIG_FILE));
   const local=resolve(root,LOCAL_FILE);

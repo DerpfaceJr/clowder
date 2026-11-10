@@ -6,7 +6,9 @@ import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import {installServiceWorkerHeaders} from '../src/pwa.ts';
+import {gunzipSync} from 'node:zlib';
+import {createHash} from 'node:crypto';
+import {installAppCsp, installGzip, installServiceWorkerHeaders} from '../src/pwa.ts';
 import {isStandalone, isIOS, initInstallApp, isInstalledApp, installWarning, QUICK_TUNNEL_WARNING, INSTALLED_NOTE} from '../public/mobile-ui.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -33,6 +35,8 @@ test('the service worker never routes /api through the cache, including SSE and 
 test('navigations and the app code are network first, and heavy assets are stale-while-revalidate', () => {
   assert.equal(get('/', true), 'navigate');
   assert.equal(get('/?x=1', true), 'navigate');
+  for (const url of ['/artifacts/5b0c9d7e-0000-4000-8000-000000000000/raw', '/artifacts/5b0c9d7e-0000-4000-8000-000000000000', '/app/clowder.apk'])
+    assert.equal(get(url, true), 'pass', `${url} is never stored as the offline app page`);
   for (const url of ['/app.js', '/mobile-ui.js', '/town.js', '/style.css', '/immersive.css', '/manifest.webmanifest']) {
     assert.equal(get(url), 'fresh', `${url} is network first`);
   }
@@ -65,6 +69,57 @@ test('sw.js is served with no-cache, and other static files keep their default h
     assert.equal(sw2.headers['cache-control'], 'no-cache');
     const other = await app.inject({method: 'GET', url: '/app.js'});
     assert.notEqual(other.headers['cache-control'], 'no-cache');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the app page carries a script policy with a hash for each of its inline scripts, and no other response does', async () => {
+  const app = Fastify({logger: false});
+  installAppCsp(app, join(root, 'index.html'));
+  await app.register(fastifyStatic, {root, prefix: '/'});
+  app.get('/callback', async (req, reply) => reply.type('text/html').send('<script>close()</script>'));
+  try {
+    const inline = [...read('index.html').matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+    assert.equal(inline.length, 2, 'the import map and the desktop-app class');
+    for (const url of ['/', '/index.html', '/?owner=x']) {
+      const csp = String((await app.inject({url})).headers['content-security-policy']);
+      assert.match(csp, /^script-src 'self' 'sha256-[^;]+; object-src 'none'; base-uri 'none'$/, url);
+      for (const text of inline) assert.ok(csp.includes(`'sha256-${createHash('sha256').update(text).digest('base64')}'`), `${url}: ${text.slice(0, 30)}`);
+      assert.ok(!/unsafe-inline|unsafe-eval|\*/.test(csp), url);
+    }
+    const page = await app.inject({url: '/'});
+    const again = await app.inject({url: '/', headers: {'if-none-match': page.headers.etag}});
+    assert.equal(again.statusCode, 304);
+    assert.equal(again.headers['content-security-policy'], page.headers['content-security-policy'], 'a revalidated copy gets the policy too');
+    assert.equal((await app.inject({url: '/app.js'})).headers['content-security-policy'], undefined);
+    assert.equal((await app.inject({url: '/callback'})).headers['content-security-policy'], undefined, 'a route’s own page is not the app page');
+  } finally {
+    await app.close();
+  }
+});
+
+test('static text is gzipped for a browser that accepts it, and nothing else is', async () => {
+  const app = Fastify({logger: false});
+  installGzip(app);
+  await app.register(fastifyStatic, {root, prefix: '/'});
+  app.get('/api/x', async () => ({ok: true}));
+  const gzip = {'accept-encoding': 'gzip, deflate, br'};
+  try {
+    const zipped = await app.inject({url: '/app.js', headers: gzip});
+    assert.equal(zipped.statusCode, 200);
+    assert.equal(zipped.headers['content-encoding'], 'gzip');
+    assert.equal(zipped.headers['vary'], 'Accept-Encoding');
+    assert.equal(zipped.headers['content-length'], undefined);
+    assert.deepEqual(gunzipSync(zipped.rawPayload), readFileSync(join(root, 'app.js')));
+    assert.ok(zipped.rawPayload.length < readFileSync(join(root, 'app.js')).length / 2, 'at most half the bytes');
+    const plain = await app.inject({url: '/app.js'});
+    assert.equal(plain.headers['content-encoding'], undefined, 'no Accept-Encoding, no gzip');
+    assert.deepEqual(plain.rawPayload, readFileSync(join(root, 'app.js')));
+    assert.equal((await app.inject({url: '/app.js', headers: {...gzip, range: 'bytes=0-9'}})).headers['content-encoding'], undefined, 'a range stays as it is');
+    assert.equal((await app.inject({url: '/app.js', headers: {...gzip, 'if-none-match': zipped.headers.etag}})).statusCode, 304);
+    assert.equal((await app.inject({url: '/icons/icon-192.png', headers: gzip})).headers['content-encoding'], undefined, 'an image is already compressed');
+    assert.equal((await app.inject({url: '/api/x', headers: gzip})).headers['content-encoding'], undefined, 'a JSON route is not a file stream');
   } finally {
     await app.close();
   }

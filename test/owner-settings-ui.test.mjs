@@ -210,7 +210,7 @@ test('a no keeps pinging; no paired phone points to Devices; away from the host 
   assert.match(away.dialog.textContent, new RegExp(NTFY_HOST_ONLY));
 });
 
-test('app.js adds the three entries to Devices & AI and to openSurface', () => {
+test('app.js adds the three entries to the Post office and to openSurface', () => {
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /const ownerClientsPanel=initOwnerClientsPanel\(\);/);
   assert.match(app, /initMailWatchPanel\(\{openClients:\(\)=>openSurface\('clients'\),openConnectors:\(\)=>openSurface\('connectors'\)\}\)/);

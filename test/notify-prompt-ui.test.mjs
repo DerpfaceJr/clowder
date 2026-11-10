@@ -135,10 +135,10 @@ test('the card waits while a dialog or the intro is open, then appears', async (
 
 test('app.js opens a linked decision on load and on a fragment change, after the state loads, and offers notifications to owners', () => {
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-  assert.match(app, /function takeApprovalLink\(\)\{const id=approvalFromHash\(location\.hash\);if\(!id\)return;wantedApproval=id;history\.replaceState\(null,'',location\.pathname\+location\.search\);openWantedApproval\(\);\}/);
-  assert.match(app, /\ntakeApprovalLink\(\);\n/, 'read once on load');
-  assert.match(app, /addEventListener\('hashchange',\(\)=>\{[^\n]*else takeApprovalLink\(\);\}\);/, 'and again when only the fragment changes');
-  assert.match(app, /render\(\);openWantedApproval\(\);\}catch/, 'opened once the state is there');
+  assert.match(app, /function takeLink\(\)\{const link=linkFromHash\(location\.hash\);if\(!link\)return;wantedLink=link;history\.replaceState\(null,'',location\.pathname\+location\.search\);openWantedLink\(\);\}/, 'one reader for #approval=, #thread= and #cat= (plan 8.10)');
+  assert.match(app, /\ntakeLink\(\);\n/, 'read once on load');
+  assert.match(app, /addEventListener\('hashchange',\(\)=>\{[^\n]*else takeLink\(\);\}\);/, 'and again when only the fragment changes');
+  assert.match(app, /render\(\);openWantedLink\(\);\}catch/, 'opened once the state is there');
   assert.match(app, /if\(openApprovalSheet\(id\)\)return;/);
   assert.match(app, /function offerNotifications\(\)\{if\(state&&!state\.readOnly\)void maybePromptNotifications\(\{controller:sound\}\);\}/);
   assert.match(app, /await refresh\(\);await ensureScene\(\);offerNotifications\(\);\}/, 'after the town loads');

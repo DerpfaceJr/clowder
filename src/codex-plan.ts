@@ -14,11 +14,11 @@
 // Not verified here: a live model call, the logged-out status text, and the default model name.
 // UNVERIFIED: model_reasoning_effort as a -c key and its values (minimal, low, medium, high). The exec help does not list them.
 import {randomUUID} from 'node:crypto';
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import type {ModelReply, Provider} from './provider.ts';
-import {fnOf, planFailure, resolveExecutable, runCli, splitSystem, takesText, transcript, type PlanHealth} from './claude-plan.ts';
+import {fnOf, planFailure, removeCallDir, resolveExecutable, runCli, splitSystem, takesText, transcript, type PlanHealth} from './claude-plan.ts';
 
 // Plain strings, not a union: OpenAI strict structured output rejects open objects, so args travel as JSON text.
 const CODEX_SUFFIX='Respond only with the structured output. Choose exactly one action from the listed tools, or action "reply" with text if no tool fits. Put the tool arguments in args_json as a JSON object string ("{}" when none). Use text "" unless the action is "reply".';
@@ -61,7 +61,7 @@ export function codexPlanProvider(model:string|undefined,timeoutMs:number,opts:{
       // The CLI does not report token usage here, so usage stays unknown rather than zero.
       return {message:{role:'assistant',content:'',tool_calls:[{id:'call_'+randomUUID(),type:'function',function:{name:out.action,arguments:JSON.stringify(parsed)}}]}};
     }finally{
-      rmSync(callDir,{recursive:true,force:true});
+      removeCallDir(callDir);
     }
   };
 }

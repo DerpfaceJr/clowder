@@ -25,6 +25,10 @@ const RECIPE_WAIT={needs_owner:'Installed, the owner decides its run recipe',pen
 export const SETUP_TOAST='Setting up the cats’ workshop…';
 export const WSL_CONFIRM='Clowder’s cats need Windows Subsystem for Linux for their sandbox. Install it now? (Windows will ask for permission and may need a restart.)';
 export const SETUP_CONFIRM='Clowder will download the official Ubuntu base image, check its SHA-256, and create a separate WSL distro named cat-workshop. The cats’ tools run there and cannot see your Windows files. This can take a while. Continue?';
+// The two system-level installs ask first with confirmDialog (dialogs.js), the styled one: the button's own words as the title, the same
+// sentence as before, and Cancel first, so it has focus when the dialog opens and a stray Enter installs nothing.
+export const SETUP_ASK=Object.freeze({title:'Create workshop',message:SETUP_CONFIRM,confirmLabel:'Continue',cancelLabel:'Cancel'});
+export const WSL_ASK=Object.freeze({title:'Install WSL',message:WSL_CONFIRM,confirmLabel:'Install',cancelLabel:'Cancel'});
 
 // Pure: the workshop card from GET /api/workshop. Install is enabled only when the distro exists and is isolated.
 export function workshopCard(w){
@@ -681,14 +685,14 @@ export function createModelsPanel({button,chip=null,dialog,body,api,onChanged=()
     finally{await refreshWorkshop();}
   }
   async function createWorkshop(button){
-    if(!window.confirm(SETUP_CONFIRM))return;
+    if(!await confirmDialog(SETUP_ASK))return;
     button.disabled=true;setWorkshopError('');
     try{await api('workshop/setup',{});showToast(SETUP_TOAST);}
     catch(err){setWorkshopError(err);}
     finally{await refreshWorkshop();}
   }
   async function installWsl(button){
-    if(!window.confirm(WSL_CONFIRM))return;
+    if(!await confirmDialog(WSL_ASK))return;
     button.disabled=true;setWorkshopError('');
     try{await api('workshop/install-wsl',{confirm:true});}
     catch(err){setWorkshopError(err);}

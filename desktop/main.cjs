@@ -9,6 +9,7 @@ const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
+const {teamDataDir, nextTeam, parseTeams, teamEnv} = require('./teams.cjs');
 
 const LOG_TAIL_LINES = 40;
 // Copies of the :root tokens in public/style.css (--paper, --ink). Keep them in step.
@@ -31,6 +32,8 @@ let restoring = false;  // a restore is swapping files (plan 7.6)
 let launchPlan = null;  // { dataDir, port, remotePort }, so a restore restarts the server the same way
 let logFile = '';
 const logLines = [];
+let basePorts = null;   // the config's {port, remotePort}, where team ports are derived from (desktop/teams.cjs)
+const teamRuns = new Map(); // team slug -> { child, exited, ready, stopping, port, remotePort, origin, key, win }
 
 function appendLog(chunk) {
   const text = String(chunk);
@@ -77,9 +80,9 @@ async function freePort(start, taken = []) {
   throw new Error(`No free port from ${start} upward.`);
 }
 
-function ping(url, port) {
+function ping(url, port, key = ownerKey) {
   return new Promise(resolve => {
-    const req = http.get(url, {timeout: 1500, headers: {cookie: `${ownerCookie(port)}=${ownerKey}`}}, res => { res.resume(); resolve(res.statusCode === 200); });
+    const req = http.get(url, {timeout: 1500, headers: {cookie: `${ownerCookie(port)}=${key}`}}, res => { res.resume(); resolve(res.statusCode === 200); });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
   });
@@ -87,15 +90,20 @@ function ping(url, port) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function waitForServer(origin, port) {
+async function waitForServer(origin, port, alive = () => !!server && !server.exited, key = ownerKey) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (!server || server.exited) return false;
-    if (await ping(`${origin}/api/state`, port)) return true;
+    if (!alive()) return false;
+    if (await ping(`${origin}/api/state`, port, key)) return true;
     await sleep(300);
   }
   return false;
 }
+
+// A town server that stops by itself is started again on the same ports, and resumes its saved turns at boot (src/engine.ts). A second
+// stop inside this window is a crash loop, so the window shows the error instead.
+const RELAUNCH_QUIET_MS = 10 * 60_000;
+let relaunchedAt = 0;
 
 function startServer(dataDir, port, remotePort) {
   const env = {
@@ -125,7 +133,11 @@ function startServer(dataDir, port, remotePort) {
     if (stopping || state.stopping) return;
     appendLog(`[desktop] server exited with code ${code}\n`);
     // Before the window has the town, waitForServer reports the failure with this log tail.
-    if (state.ready) showError('The town server stopped unexpectedly.');
+    if (!state.ready) return;
+    if (Date.now() - relaunchedAt < RELAUNCH_QUIET_MS) return showError('The town server stopped unexpectedly.');
+    relaunchedAt = Date.now();
+    appendLog('[desktop] starting the server again\n');
+    launch().catch((err) => { appendLog(`[desktop] ${err.message}\n`); showError('The town server stopped unexpectedly.'); });
   });
   child.once('error', (err) => appendLog(`[desktop] server failed to start: ${err.message}\n`));
   return state;
@@ -162,6 +174,10 @@ async function stopServer({quitting = true} = {}) {
   if (!server) return;
   server.stopping = true;
   const {child} = server;server = null;
+  await stopChild(child);
+}
+
+async function stopChild(child) {
   if (child.exitCode === null && child.connected) {
     const exited = new Promise((resolve) => child.once('exit', resolve));
     try { child.send('shutdown'); } catch { /* channel already closed */ }
@@ -179,9 +195,16 @@ async function stopServer({quitting = true} = {}) {
 // means nothing can be running. A server that does not answer in time counts as busy.
 const BUSY_TIMEOUT_MS = 5000;
 let busySeq = 0;
-function askBusy() {
-  if (restoring) return Promise.resolve('A restore is running.');
-  const s = server;
+// The private town first, then each running team (plan 10.1): an update must not stop a team mid-task either.
+async function askBusy() {
+  if (restoring) return 'A restore is running.';
+  for (const [slug, s] of [['', server], ...teamRuns]) {
+    const reason = await askBusyOf(s);
+    if (reason !== null) return slug ? `${teamName(slug)}: ${reason}` : reason;
+  }
+  return null;
+}
+function askBusyOf(s) {
   if (!s || s.exited) return Promise.resolve(null);
   if (!s.ready || !s.child.connected) return Promise.resolve('The town is not ready.');
   return new Promise((resolve) => {
@@ -216,7 +239,8 @@ async function startUpdater() {
   updates = updateGate({
     updater: autoUpdater,
     askBusy,
-    stopServer,
+    // Team servers stop first, as will-quit does it: the installer must never start while one still runs (update-gate.cjs restartNow).
+    stopServer: async (o) => { await stopTeams(); await stopServer(o); },
     quit: () => app.quit(),
     restart: () => launch(),
     offer: async (version) => {
@@ -256,10 +280,27 @@ function isAllowedUrl(url) {
   try {
     const u = new URL(url);
     if (u.href === loadingUrl) return true;
-    return !!server && u.origin === server.origin;
+    return (!!server && u.origin === server.origin) || [...teamRuns.values()].some(s => u.origin === s.origin);
   } catch {
     return false;
   }
+}
+
+// Every Clowder window: links leave for the default browser (https only), navigation stays on a town origin, no permission is granted.
+function guardContents(contents) {
+  contents.setWindowOpenHandler(({url}) => {
+    openExternal(url);
+    return {action: 'deny'};
+  });
+  contents.on('will-navigate', (event, url) => {
+    if (isAllowedUrl(url)) return;
+    event.preventDefault();
+    openExternal(url);
+  });
+  contents.on('will-redirect', (event, url) => {
+    if (!isAllowedUrl(url)) event.preventDefault();
+  });
+  contents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
 }
 
 function openExternal(url) {
@@ -334,24 +375,12 @@ function createWindow() {
       Menu.getApplicationMenu()?.popup({window: win, x: 12, y: 56});
     }
   });
-  contents.setWindowOpenHandler(({url}) => {
-    openExternal(url);
-    return {action: 'deny'};
-  });
-  contents.on('will-navigate', (event, url) => {
-    if (isAllowedUrl(url)) return;
-    event.preventDefault();
-    openExternal(url);
-  });
-  contents.on('will-redirect', (event, url) => {
-    if (!isAllowedUrl(url)) event.preventDefault();
-  });
+  guardContents(contents);
   contents.on('did-finish-load', () => {
     if (server && contents.getURL().startsWith(server.origin)) {
       console.log(`Clowder window loaded: ${contents.getURL()}`);
     }
   });
-  contents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   // The page's own <title> would replace "Cat Town" in the window title bar.
   win.on('page-title-updated', (event) => event.preventDefault());
   win.loadFile(loadingFile);
@@ -473,6 +502,14 @@ function buildMenu() {
         {role: 'quit'},
       ],
     },
+    {
+      label: 'Teams',
+      submenu: [
+        {label: 'New team', enabled: !!basePorts && !!launchPlan, click: () => void createTeam()},
+        ...(readTeams().length ? [{type: 'separator'}] : []),
+        ...readTeams().map(teamMenu),
+      ],
+    },
     {role: 'editMenu'},
     {role: 'viewMenu'},
     {role: 'windowMenu'},
@@ -482,6 +519,151 @@ function buildMenu() {
 function dataFolder() {
   if (process.env.CAT_TOWN_DATA) return path.resolve(process.env.CAT_TOWN_DATA);
   return app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.join(root, 'data');
+}
+
+// Team instances (plan 10.1, D13 b). Each team is a second server with its own data folder beside this one's, its own ports and its own
+// owner key, started from the Teams menu; desktop/teams.cjs holds the rules. The list lives in teams.json beside window-state.json.
+// ponytail: teams are numbered (Team 1, Team 2); naming one waits for the People panel (10.11).
+function teamsFile() {
+  return path.join(app.getPath('userData'), 'teams.json');
+}
+
+function readTeams() {
+  try { return parseTeams(fs.readFileSync(teamsFile(), 'utf8')); } catch { return []; }
+}
+
+function teamName(slug) {
+  return readTeams().find(t => t.slug === slug)?.name || slug;
+}
+
+function refreshMenu() {
+  Menu.setApplicationMenu(buildMenu());
+}
+
+function teamMenu(team) {
+  const run = teamRuns.get(team.slug);
+  const state = !run ? '' : run.ready ? ` (running on port ${run.port})` : ' (starting)';
+  return {
+    label: `${team.name}${state}`,
+    submenu: [
+      {label: 'Open', enabled: !!run?.ready, click: () => void openTeam(team)},
+      {label: 'Start', enabled: !run && !!launchPlan, click: () => void startTeam(team)},
+      {label: 'Stop', enabled: !!run, click: () => void stopTeam(team)},
+      {label: 'Show folder', enabled: !!launchPlan, click: () => void shell.openPath(teamDataDir(launchPlan.dataDir, team.slug))},
+    ],
+  };
+}
+
+function teamError(message, detail) {
+  appendLog(`[desktop] ${message} ${detail}\n`);
+  const parent = win && !win.isDestroyed() ? win : undefined;
+  void dialog.showMessageBox(parent, {type: 'error', title: 'Teams', message, detail});
+}
+
+async function createTeam() {
+  if (!basePorts || !launchPlan) return;
+  const teams = readTeams();
+  const team = nextTeam(teams, basePorts);
+  try {
+    fs.mkdirSync(teamDataDir(launchPlan.dataDir, team.slug), {recursive: true});
+    fs.writeFileSync(teamsFile(), JSON.stringify({teams: [...teams, team]}, null, 2));
+  } catch (err) {
+    teamError(`${team.name} was not created.`, err.message);
+    return;
+  }
+  refreshMenu();
+  await startTeam(team);
+}
+
+async function startTeam(team) {
+  if (teamRuns.has(team.slug) || !launchPlan) return;
+  const logPath = path.join(app.getPath('userData'), `server-${team.slug}.log`);
+  let run;
+  try {
+    const dataDir = teamDataDir(launchPlan.dataDir, team.slug);
+    fs.mkdirSync(dataDir, {recursive: true});
+    // The team's own ports when free; otherwise the next free ones, never the private town's or another team's.
+    const taken = [launchPlan.port, launchPlan.remotePort, ...[...teamRuns.values()].flatMap(s => [s.port, s.remotePort])];
+    const port = await freePort(team.port, taken);
+    const remotePort = await freePort(team.remotePort, [...taken, port]);
+    const key = randomBytes(32).toString('base64url');
+    fs.writeFileSync(logPath, `Clowder ${team.name} ${new Date().toISOString()}\ndata: ${dataDir}\n`);
+    const env = teamEnv({...process.env, ELECTRON_RUN_AS_NODE: '1', CAT_SECRETS_BROKER: '1'}, {slug: team.slug, dataDir, port, remotePort, ownerKey: key});
+    const child = spawn(process.execPath, ['--import', 'tsx', 'src/server.ts'], {cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc']});
+    serveSecrets(child);
+    const log = (chunk) => { try { fs.appendFileSync(logPath, chunk); } catch { /* not logged this time */ } };
+    child.stdout.on('data', log);
+    child.stderr.on('data', log);
+    run = {child, exited: false, ready: false, stopping: false, port, remotePort, origin: `http://127.0.0.1:${port}`, key, win: null};
+    teamRuns.set(team.slug, run);
+    child.once('error', (err) => log(`[desktop] server failed to start: ${err.message}\n`));
+    child.once('exit', (code) => {
+      run.exited = true;
+      if (teamRuns.get(team.slug) === run) teamRuns.delete(team.slug);
+      if (run.win && !run.win.isDestroyed()) run.win.close();
+      refreshMenu();
+      if (!run.stopping && !stopping) teamError(`${team.name} stopped.`, `Its server exited with code ${code}. Log: ${logPath}`);
+    });
+  } catch (err) {
+    teamError(`${team.name} did not start.`, err.message);
+    return;
+  }
+  refreshMenu();
+  const ready = await waitForServer(run.origin, run.port, () => !run.exited, run.key);
+  if (run.exited || run.stopping) return;
+  if (!ready) {
+    run.stopping = true;
+    teamRuns.delete(team.slug);
+    await stopChild(run.child);
+    refreshMenu();
+    teamError(`${team.name} did not answer in time.`, `Log: ${logPath}`);
+    return;
+  }
+  run.ready = true;
+  refreshMenu();
+  await openTeam(team);
+}
+
+// The team's town in its own window, signed in as its owner by that server's session cookie (it carries the port, src/access.ts).
+async function openTeam(team) {
+  const run = teamRuns.get(team.slug);
+  if (!run || !run.ready) return;
+  if (run.win && !run.win.isDestroyed()) {
+    if (run.win.isMinimized()) run.win.restore();
+    run.win.focus();
+    return;
+  }
+  const w = new BrowserWindow({
+    title: `Clowder: ${team.name}`,
+    icon: path.join(root, 'public', 'icons', 'icon-512.png'),
+    width: 1280,
+    height: 820,
+    minWidth: 800,
+    minHeight: 600,
+    backgroundColor: PAPER,
+    autoHideMenuBar: true,
+    webPreferences: {contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, devTools: !app.isPackaged},
+  });
+  run.win = w;
+  guardContents(w.webContents);
+  w.on('page-title-updated', (event) => event.preventDefault());
+  w.on('closed', () => { if (run.win === w) run.win = null; });
+  await w.webContents.session.cookies.set({url: run.origin, name: ownerCookie(run.port), value: run.key, httpOnly: true, sameSite: 'strict', path: '/'});
+  await w.loadURL(run.origin + '/');
+}
+
+async function stopTeam(team) {
+  const run = teamRuns.get(team.slug);
+  if (!run) return;
+  run.stopping = true;
+  teamRuns.delete(team.slug);
+  if (run.win && !run.win.isDestroyed()) run.win.close();
+  refreshMenu();
+  await stopChild(run.child);
+}
+
+function stopTeams() {
+  return Promise.all([...teamRuns.values()].map((run) => { run.stopping = true; return stopChild(run.child); }));
 }
 
 // Starts the server and shows the town in the window. boot() runs it once; a restore runs it again on the same ports.
@@ -513,12 +695,14 @@ async function boot() {
     fs.writeFileSync(logFile, `Clowder ${new Date().toISOString()}\ndata: ${dataDir}\n`);
 
     const cfg = readConfig();
+    basePorts = {port: cfg.port, remotePort: cfg.remotePort};
     const port = await freePort(Number(process.env.PORT || cfg.port));
     const remotePort = process.env.CAT_REMOTE_PORT
       ? Number(process.env.CAT_REMOTE_PORT)
       : await freePort(cfg.remotePort, [port]);
 
     launchPlan = {dataDir, port, remotePort};
+    refreshMenu();
     await launch();
     await startUpdater().catch((err) => appendLog(`[updater] off: ${err.message}\n`));
   } catch (err) {
@@ -549,6 +733,7 @@ if (!app.requestSingleInstanceLock()) {
     if (stopped) return;
     event.preventDefault();
     // A downloaded update the owner left for "at next quit" installs here, only if the town is idle and after the server has stopped.
-    void (updates ? updates.onQuit() : stopServer()).catch(() => stopServer()).finally(() => { stopped = true; app.quit(); });
+    // Team servers stop first, so an update's installer never starts while one still runs.
+    void stopTeams().then(() => (updates ? updates.onQuit() : stopServer())).catch(() => stopServer()).finally(() => { stopped = true; app.quit(); });
   });
 }

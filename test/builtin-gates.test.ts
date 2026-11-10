@@ -14,13 +14,14 @@ import {allRoles} from '../src/roles.ts';
 import {BUILTINS, type ToolRuntime} from '../src/tool-runtimes.ts';
 import type {MediaRuntime} from '../src/media.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
 const offline = (async () => { throw new Error('offline for this test'); }) as any;
 const hubAt = (dataDir: string) => new ConnectorHub({dataDir, port: 4329, home: tmp('gates-home-'), connect: offline});
 // ms: 5 s timed out once while the full suite loaded the CPU (5,858 ms), so the ceiling is 30 s; it returns as soon as fn holds.
-async function until(fn: () => boolean, ms = 30000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail('Timed out waiting for state transition'); }
+const until = untilEvery(10, 30000);
 const statusOf = (store: Store, id: string) => store.state.tasks.find(t => t.id === id)?.status;
 const finished = (store: Store, id: string, ms?: number) => until(() => ['done', 'failed', 'cancelled', 'interrupted'].includes(statusOf(store, id) ?? ''), ms);
 const pendingOf = (store: Store) => store.state.approvals.filter(a => a.status === 'pending');

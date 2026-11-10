@@ -4,7 +4,9 @@ import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import Fastify from 'fastify';
-import {registerAndroidApk} from '../src/android-apk.ts';
+import {execFileSync} from 'node:child_process';
+import {existsSync} from 'node:fs';
+import {androidApkPath,registerAndroidApk} from '../src/android-apk.ts';
 import {Pairing,type RemoteConfig} from '../src/pairing.ts';
 import {installRemoteAccess} from '../src/remote-access.ts';
 const config:RemoteConfig=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8')).remote;
@@ -47,4 +49,16 @@ test('the remote listener serves the APK to unpaired devices, and the rest of /a
     assert.equal((await app.inject({method:'GET',url:'/app.js',headers})).statusCode,404);
     await app.close();
   }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+// The tracked APK is what a clean build and a release ship (.gitignore keeps only dist-android/Clowder.apk). A change under android/ that is
+// not followed by `npm run android` and a commit of the new APK would ship the old app, as happened between 2026-10-29 and 2026-11-10.
+// A shallow or single-commit history gives both paths the same commit, so this holds there by itself.
+test('the tracked APK is not older than the newest change under android/',()=>{
+  const root=new URL('../',import.meta.url);
+  const stamp=(path:string)=>{try{return Number(execFileSync('git',['log','-1','--format=%ct','--',path],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim())||0;}catch{return 0;}};
+  const sources=stamp('android'),built=stamp('dist-android/Clowder.apk');
+  if(!sources)return; // no git history here (an exported tree)
+  assert.ok(existsSync(androidApkPath),'dist-android/Clowder.apk is in the tree');
+  assert.ok(built>=sources,'android/ changed after the APK was last committed: run npm run android and commit dist-android/Clowder.apk');
 });

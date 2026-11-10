@@ -77,8 +77,8 @@ test('summary tiles: failed sources show dashes, not zeros', () => {
     {id: '2', createdAt: ago(10 * DAY)},
   ];
   const ok = summaryTiles({goals, goalsKnown: true, needsYou: 3, week: {tokens: 5380279}, artifacts, now: NOW});
-  assert.deepEqual(ok.map(t => t.value), ['1', '3', '5.4M', '1'], 'Needs you is the one count the dock badge shows');
-  assert.deepEqual(ok.map(t => t.label), ['Active goals', 'Needs you', 'Tokens, 7 days', 'Artifacts, 7 days']);
+  assert.deepEqual(ok.map(t => t.value), ['1', '3', '5.4M', '1'], 'the Inbox tile is the one count the dock badge shows');
+  assert.deepEqual(ok.map(t => t.label), ['Active goals', 'Inbox', 'Tokens, 7 days', 'Artifacts, 7 days'], 'the tile names the panel the dock calls Inbox');
   assert.equal(ok[0].hint, '0 paused', 'the paused hint counts the Paused group, not the waiting one');
   const failed = summaryTiles({goals: [], goalsKnown: false, needsYou: null, week: {tokens: null}, artifacts: null, now: NOW});
   assert.deepEqual(failed.map(t => t.value), ['—', '—', '—', '—']);

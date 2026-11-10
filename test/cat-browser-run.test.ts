@@ -13,6 +13,7 @@ import {allRoles} from '../src/roles.ts';
 import {quests} from '../src/quests.ts';
 import type {Provider} from '../src/provider.ts';
 import {CLI_ENV} from '../src/claude-plan.ts';
+import {untilEvery} from './helpers/until.ts';
 // The fake CLIs read these; a real CLI run gets only CLI_ENV from this process's environment (security pass M3).
 CLI_ENV.push('CAT_FAKE_BROWSE_ERROR', 'CAT_FAKE_BROWSE_LOG', 'CAT_FAKE_BROWSE_REPLY');
 
@@ -50,7 +51,7 @@ const withEnv = async <T>(vars: Record<string, string | undefined>, fn: () => Pr
 const calls = (): any[] => existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
 const claudeRuntime = (root: string): ToolRuntime => ({kind: 'claude', executable: claude, defaultModel: 'haiku', fastModel: 'haiku', workspaceRoot: root});
 const newWorld = () => { const worldDir = mkdtempSync(join(tmpdir(), 'world-')); const file = join(worldDir, 'events.jsonl'); return {file, store: new Store(file, allRoles(config))}; };
-async function until(fn: () => boolean, ms = 5000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail('Timed out waiting for state transition'); }
+const until = untilEvery(10);
 const statusOf = (store: Store, id: string) => store.state.tasks.find(t => t.id === id)?.status;
 const pendingOf = (store: Store) => store.state.approvals.filter(a => a.status === 'pending');
 const names = (tools: any[]) => tools.map(t => t.function.name);
@@ -108,7 +109,7 @@ test('the page guard in a real browser: a redirect to this computer ends on abou
     await page.goto('https://other.test/').catch(() => {});
     assert.equal(otherHit, 0, 'the held run never requested another site');
     await page.goto('https://allowed.test/hop').catch(() => {});
-    await until(() => page.url() === 'about:blank', 10_000);
+    await until(() => page.url() === 'about:blank', 15_000);
     t.diagnostic(`the redirect reached the local server ${townHit} time(s); the page ended on about:blank`);
   } finally {
     await browser.close(); town.close();

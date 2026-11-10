@@ -143,7 +143,7 @@ test('a quest that finishes only on the computer offers Continue on your compute
   await settle();
   assert.deepEqual(m.server.calls.find(c => c[0] === 'POST').slice(0, 2), ['POST', '/api/quests/owner-step%3As4/handoff']);
   assert.equal(buttonByText(card(), 'Sent to your computer ✓').disabled, true);
-  assert.equal(m.status.textContent, 'Sent to your computer. It waits at the top of Needs you there.');
+  assert.equal(m.status.textContent, 'Sent to your computer. It waits at the top of the Inbox there.');
   const host = await mountQuests(doc, quests, {}, {phone: false});
   assert.equal(buttonByText(host.card('owner-step:s4'), 'Continue on your computer'), null);
   assert.ok(buttonByText(host.card('owner-step:s4'), 'Open the cats’ browser'));

@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import type {Cat,Group} from './store.ts';
 import {resolveLayout,placeInGroup,planSite,plotSpot,plotFree,seeded,townLayout} from '../public/hamlet-layout.js';
-import {oneLiner} from '../public/hologram.js';
+import {oneLiner} from '../public/one-liner.js';
 import {randomLook} from '../public/looks.js';
 const catalog=JSON.parse(readFileSync(new URL('../public/world-catalog.json',import.meta.url),'utf8'));
 const {chromas:chromaPresets,kit:kitCatalog,houseDecor:decorCatalog,...designCatalog}=catalog;

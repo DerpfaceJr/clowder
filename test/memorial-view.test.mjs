@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createMemorialView, createTownPause, MEMORIAL_EVENT} from '../public/memorial-view.js';
 import {skyMotion} from '../public/memorial.js';
 
-const read = name => readFileSync(new URL(`../public/${name}`, import.meta.url), 'utf8');
+const read = name => readFileSync(new URL(`../public/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 // A stand-in for <dialog> and the page: showModal and close behave as the platform does (close fires the close event).
 function fakeDialog(closeButton) {
@@ -138,7 +138,7 @@ test('the layer is a full-screen dialog with safe-area chrome, a short crossfade
   assert.match(css, /@keyframes memorial-in\{from\{opacity:0\}to\{opacity:1\}\}/);
   assert.match(css, /\.memorial-view\.zoom-fade\{animation:memorial-in \.25s/, 'reduced motion and no-scene opens crossfade briefly');
   assert.match(css, /\.memorial-view\.zoom-reveal\{[^}]*mask-image:radial-gradient\(circle at var\(--mx,50%\) var\(--my,50%\)/, 'the reveal opens from the telescope');
-  assert.match(css, /:is\(\.zoom-reveal,\.zoom-fade,\.zoom-leave\)::backdrop\{background:transparent;backdrop-filter:none\}/, 'the town shows through while it runs');
+  assert.match(css, /:is\(\.zoom-reveal,\.zoom-fade,\.zoom-quick,\.zoom-leave,\.zoom-quick-leave\)::backdrop\{background:transparent;backdrop-filter:none\}/, 'the town shows through while it runs');
   const chips = css.match(/\.sky-chip\{[^}]*\}/)[0], close = css.match(/\.memorial-close\{[^}]*\}/)[0];
   assert.match(chips, /min-height:44px/);
   assert.match(close, /min-height:44px/);
@@ -154,17 +154,19 @@ test('the markup has the Memorial dialog with its chrome, outside the town layou
   assert.ok(!html.includes('class="memorial panel"'), 'the old side panel is gone');
   assert.ok(!html.includes('data-toggle-panel="memorial"'), 'the dock opens the view directly');
   assert.ok(html.includes('aria-controls="memorial-panel"'), 'the dock still names the dialog');
-  assert.ok(html.includes('id="menu-memorial-open"'), 'the ☰ menu opens it too');
+  // The Memorial left ☰ for the dock's More, beside Cats, Diary and Archive (docs/design/menu-chat-mailman.md).
+  assert.ok(!html.includes('id="menu-memorial-open"'), 'the ☰ menu no longer lists it');
+  assert.match(html, /<button id="toggle-memorial" type="button" aria-label="Memorial" aria-controls="memorial-panel" aria-haspopup="dialog">/, 'More shows it, not hidden');
   assert.ok(html.indexOf('<dialog id="memorial-panel"') > html.indexOf('</main>'), 'it sits outside main, so the rest of the page can go inert');
   assert.ok(html.includes('href="/memorial-sky.css" data-memorial-sky'));
 });
 
-test('app.js keeps the Memorial out of the sheet panels and wires the dock, the menu and the observatory', () => {
+test('app.js keeps the Memorial out of the sheet panels and wires the dock’s More and the observatory', () => {
   const app = read('app.js');
   assert.ok(!/const panels=\[[^\]]*'memorial'/.test(app), 'memorial is not a sheet panel');
   assert.ok(app.includes("if(e.detail==='memorial')memorialZoom.open()"), 'the observatory tap opens it through the zoom');
   assert.ok(app.includes("$('toggle-memorial').onclick=()=>memorialZoom.open()"));
-  assert.ok(app.includes("memorialZoom.open();};"), 'the menu entry zooms too');
-  assert.ok(app.includes("$('menu-memorial-open').onclick"));
+  assert.ok(app.includes("memorial:()=>memorialZoom.open()"), 'the palette and openSurface zoom too');
+  assert.ok(!app.includes("menu-memorial-open"), 'no ☰ entry is wired any more');
   assert.match(read('town.js'), /document\.hidden\|\|memorialPause\.paused\|\|!viewW/, 'the render loop skips frames while the Memorial is open');
 });

@@ -26,7 +26,9 @@ test('the key form makes the settings body, and a blank field asks for a key ins
 
 test('Hermes is off when its status route is not there, on with its setup state when it is', async () => {
   const at = status => fakeFetch({'GET /api/hermes/runtime': status}).fetchImpl;
-  assert.deepEqual(await readHermes(fakeFetch({}).fetchImpl), {on: false}, 'a 404: hermes.enabled is off');
+  assert.deepEqual(await readHermes(fakeFetch({}).fetchImpl), {on: false}, 'a 404: hermes.enabled is off on an older server');
+  assert.deepEqual(await readHermes(at({enabled: false})), {on: false}, 'hermes.enabled is off');
+  assert.equal(await probeHermes(at({enabled: false})), false);
   assert.deepEqual(await readHermes(at({status: 403, body: {error: 'Hermes is set up on the host computer.'}})), {on: false, denied: true});
   assert.deepEqual(await readHermes(at({state: 'external'})), {on: true, runtime: {state: 'external'}});
   assert.equal(await probeHermes(at({state: 'done'})), true);

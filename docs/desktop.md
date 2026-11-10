@@ -28,7 +28,7 @@ A local build has no code signing, so Windows SmartScreen may warn on first run.
 
 A `v*` tag on the public repo runs `.github/workflows/release.yml`: it checks the tag against `package.json`, runs tsc and the tests, then builds, signs (Azure Artifact Signing) and uploads the installer, `.blockmap` and `latest.yml` to a draft release. Publish the draft once the run is green. The owner's setup is in [release-signing.md](release-signing.md).
 
-Release builds check GitHub for a newer version every 6 hours and download it in the background. An update installs only while no task or season is running: Clowder offers "restart now" or "at next quit", and stops the server before the installer starts. A download not signed by the publisher in the build is refused. The new version's first start snapshots the data into `backups\pre-<commit>-<time>\` before anything else runs. The icon is Electron's default placeholder. Node 22.12 or newer is needed to install Electron 45.
+Release builds check GitHub for a newer version every 6 hours and download it in the background. An update installs only while no task or season is running: Clowder offers "restart now" or "at next quit", and stops the server before the installer starts. A download not signed by the publisher in the build is refused. The new version's first start snapshots the data into `backups\pre-<commit>-<time>\` before anything else runs. Node 22.12 or newer is needed to install Electron 45.
 
 ## Where data lives
 
@@ -53,7 +53,7 @@ Not verified on a real machine yet: the installer's WSL check and restart messag
 
 ## Phones
 
-Phones pair the same way as before. Open **Devices** (in the Clowder menu, or the Devices button in the town), turn on remote access, and pair a device. Quitting Clowder stops remote access, so phones cannot connect until you start it again.
+Phones pair the same way as before. Open **Devices** (in the Clowder menu, or **Settings > Devices** in the town), turn on remote access, and pair a device. Quitting Clowder stops remote access, so phones cannot connect until you start it again.
 
 ## Quitting
 
@@ -62,5 +62,4 @@ Closing the window or choosing Quit stops the server, its season runs and the tu
 ## Limits
 
 - No tray icon. Devices is in the app menu.
-- The town's own page still says "cat town" in its header. That text lives in `public/`.
-- The app is not code signed, and the icon is Electron's default.
+- A local build is not code signed. Release builds are signed in the release workflow.

@@ -1,0 +1,81 @@
+/* The command palette (plan 8.9, command-palette.js). A paper card under the top edge on desks, a full-screen sheet on phones.
+   Only the V0 tokens of style.css :root: no colour literals and no tokens of its own, except the --cp-tint each cat row sets to
+   that cat's colour. dialog.command-palette outweighs the base dialog rule (padding, width, max-height, overflow). */
+dialog.command-palette{width:min(640px,calc(100vw - 2*var(--space-4)));max-width:none;max-height:min(600px,calc(100dvh - 2*var(--space-6) - min(12dvh,96px)));margin:min(12dvh,96px) auto auto;padding:0;border:0;border-radius:var(--r-lg);background:var(--paper);color:var(--ink);box-shadow:var(--e3);overflow:hidden}
+dialog.command-palette[open]{display:flex;flex-direction:column}
+dialog.command-palette::backdrop{background:var(--scrim)}
+
+.cp-field{flex:none;display:flex;align-items:center;gap:var(--space-2);padding:0 var(--space-2) 0 var(--space-4);border-bottom:1px solid var(--line)}
+.cp-field>svg{flex:none;color:var(--ink-3)}
+/* The input's focus shows as a 2px accent line under the field, so the ring of the base input rule is not drawn inside the card. */
+.cp-field:focus-within{box-shadow:inset 0 -2px 0 var(--accent)}
+dialog.command-palette .cp-input{flex:1;min-width:0;min-height:56px;padding:0 var(--space-2);border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:var(--text-lg);outline:none;box-shadow:none}
+dialog.command-palette .cp-close{flex:none;display:grid;place-items:center;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:var(--r-sm);background:transparent;color:var(--ink-2)}
+
+.cp-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:var(--space-2);scroll-padding-block:var(--space-6)}
+.cp-list[hidden]{display:none}
+.cp-group+.cp-group{margin-top:var(--space-2)}
+.cp-group-title{margin:0;padding:var(--space-2) var(--space-3) var(--space-1);font:600 var(--text-xs)/1.4 var(--font-ui);color:var(--ink-2)}
+.cp-option{display:flex;align-items:center;gap:var(--space-3);min-height:40px;padding:var(--space-2) var(--space-3);border-radius:var(--r-sm);color:var(--ink);cursor:pointer;transition:background-color var(--dur-base) var(--ease-out)}
+.cp-option[aria-selected=true]{background:color-mix(in srgb,var(--accent) 14%,var(--paper));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,var(--paper))}
+.cp-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--ink) 6%,var(--paper));color:var(--ink-2)}
+.cp-icon[data-tint]{background:color-mix(in srgb,var(--cp-tint) 35%,var(--paper));color:var(--ink)}
+.cp-option[aria-selected=true] .cp-icon{background:var(--accent);color:var(--on-accent)}
+.cp-option[aria-selected=true] .cp-icon[data-tint]{background:color-mix(in srgb,var(--cp-tint) 35%,var(--paper));color:var(--ink);box-shadow:0 0 0 2px var(--accent)}
+.cp-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.cp-label,.cp-detail{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.cp-label{font-size:var(--text-md);line-height:1.3}
+.cp-detail{font-size:var(--text-sm);line-height:1.35;color:var(--ink-2)}
+mark.cp-mark{background:none;color:inherit;font-weight:700}
+.cp-enter{flex:none;font-size:var(--text-xs);color:var(--ink-2);visibility:hidden}
+.cp-option[aria-selected=true] .cp-enter{visibility:visible}
+.cp-empty{margin:0;padding:var(--space-6) var(--space-4);text-align:center;font-size:var(--text-sm);color:var(--ink-2)}
+.cp-empty[hidden]{display:none}
+
+/* margin-top:auto keeps the footer at the foot of the phone sheet when there are few rows or none. */
+.cp-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);margin-top:auto;padding:var(--space-2) var(--space-4);border-top:1px solid var(--line);font-size:var(--text-xs);color:var(--ink-2)}
+.cp-status{flex:1;min-width:0;margin:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.cp-keys{flex:none;display:flex;align-items:center;gap:var(--space-1);margin:0;white-space:nowrap}
+.cp-keys kbd{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 var(--space-1);border-radius:var(--r-xs);background:color-mix(in srgb,var(--ink) 7%,var(--paper));color:var(--ink-2);font:600 var(--text-xs)/1 var(--font-ui)}
+
+/* The "?" list (plan 11.7, command-palette.js createShortcutList): the same card, a title row, then one line per key. */
+.cp-sheet-head{flex:none;display:flex;align-items:center;gap:var(--space-2);min-height:56px;padding:0 var(--space-2) 0 var(--space-4);border-bottom:1px solid var(--line)}
+.cp-sheet-head>svg{flex:none;color:var(--ink-3)}
+dialog.command-palette .cp-sheet-title{flex:1;min-width:0;margin:0;padding:0 var(--space-2);font:600 var(--text-lg)/1.3 var(--font-ui);color:var(--ink)}
+.cp-shortcuts{flex:1 1 auto;min-height:0;overflow-y:auto;margin:0;padding:var(--space-2) var(--space-4) var(--space-4)}
+.cp-shortcut{display:flex;align-items:center;gap:var(--space-4);min-height:var(--tap);padding:var(--space-2) 0;border-bottom:1px solid var(--line)}
+.cp-shortcut:last-child{border-bottom:0}
+.cp-shortcut-keys{flex:none;display:flex;align-items:center;gap:var(--space-1);min-width:84px;margin:0}
+.cp-shortcut-keys kbd{display:inline-grid;place-items:center;min-width:28px;height:28px;padding:0 var(--space-2);border-radius:var(--r-xs);background:color-mix(in srgb,var(--ink) 7%,var(--paper));box-shadow:inset 0 -1px 0 var(--line);color:var(--ink);font:600 var(--text-sm)/1 var(--font-ui)}
+.cp-shortcut-what{flex:1;min-width:0;margin:0;font-size:var(--text-md);line-height:1.4;color:var(--ink)}
+/* Search heads the narrow dock's More list (plan 11.7, index.html #dock-search). From 900px the More list's items stand in the dock
+   row, and Search stands there with them (UX audit 2026-11-10, row 10): Ctrl+K still opens the palette, and now a button shows it. */
+
+/* Hover colours only where a pointer can hover; a touch press tints the row instead. */
+@media(hover:hover){
+  .cp-option:hover:not([aria-selected=true]){background:color-mix(in srgb,var(--ink) 5%,var(--paper))}
+  dialog.command-palette .cp-close:hover{background:color-mix(in srgb,var(--ink) 6%,var(--paper))}
+}
+@media(hover:none){.cp-option:active{background:color-mix(in srgb,var(--accent) 14%,var(--paper))}}
+/* Touch: 44px rows, and no keyboard hints. */
+@media(pointer:coarse){
+  .cp-option{min-height:var(--tap)}
+  .cp-enter,.cp-keys{display:none}
+}
+/* Phones: a full-screen sheet with the box at the top, clear of the notch and the home bar. */
+@media(max-width:599px){
+  dialog.command-palette{inset:0;width:100%;height:100dvh;max-height:none;margin:0;border-radius:0;box-shadow:none}
+  .cp-field{padding-top:env(safe-area-inset-top,0px)}
+  .cp-foot{padding-bottom:calc(var(--space-2) + env(safe-area-inset-bottom,0px))}
+  .cp-keys{display:none}
+}
+/* Windows high contrast: backgrounds are replaced, so the active row gets an outline in the system colour. */
+@media(forced-colors:active){.cp-option[aria-selected=true]{outline:2px solid;outline-offset:-2px}.cp-shortcut-keys kbd{outline:1px solid}}
+/* The card fades in from a little above its place, the phone sheet only fades; reduced motion opens it at once. */
+@media(prefers-reduced-motion:no-preference){
+  dialog.command-palette[open]{animation:cp-in var(--dur-sheet) var(--ease-out)}
+  dialog.command-palette[open]::backdrop{animation:cp-fade var(--dur-sheet) var(--ease-out)}
+}
+@media(prefers-reduced-motion:no-preference) and (max-width:599px){dialog.command-palette[open]{animation-name:cp-fade}}
+@keyframes cp-in{from{opacity:0;translate:0 -6px}}
+@keyframes cp-fade{from{opacity:0}}

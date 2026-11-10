@@ -47,6 +47,8 @@ test('over HTTP the switch swaps the cats, notifies /api/events, and refuses pro
     const readFrame = async () => { const {value} = await reader.read(); seen += decoder.decode(value); };
     await readFrame();
     const before = changes();
+    // For you's settings belong to the open world (plan 9.3): the home world's guidance does not follow the switch.
+    assert.equal((await fetch(base + '/api/for-you', {method: 'PUT', headers: owner, body: JSON.stringify({guidance: 'Home only.'})})).status, 200);
 
     const created = await post('/api/worlds', {name: 'Meadow'});
     assert.equal(created.status, 200);
@@ -57,7 +59,9 @@ test('over HTTP the switch swaps the cats, notifies /api/events, and refuses pro
 
     const state = await (await fetch(base + '/api/state')).json() as {activeWorld: {id: string; name: string}; introPending: boolean};
     assert.equal(state.activeWorld.id, world.id);
-    assert.deepEqual(await cats(), ['mayor'], 'a new world starts with the Mayor alone');
+    assert.deepEqual(await cats(), ['mayor', 'mailman'], 'a new world starts with the Mayor and the Mailman');
+    const forYou = await (await fetch(base + '/api/for-you')).json() as {guidance: string; enabled: boolean; intervalSeconds: number};
+    assert.deepEqual([forYou.guidance, forYou.enabled, forYou.intervalSeconds], ['', false, 900], 'the new world has its own For you settings, off');
     assert.equal(state.introPending, true, 'a new world is pending its intro');
     assert.equal((await post('/api/world/intro-seen', {}, {...owner, 'x-forwarded-for': '203.0.113.9'})).status, 403, 'a proxied intro mark is refused');
     assert.equal((await post('/api/world/intro-seen', {})).status, 200);

@@ -48,7 +48,7 @@ a.setup-action.primary{border:1px solid var(--accent);border-radius:var(--r-sm)}
  .setup-hub-body{padding:var(--space-4) var(--space-6) var(--space-6)}
 }
 
-/* Settings list rows (settings-menu.js): a count badge, and the Screen & app links sized like its buttons. */
-.menu-row-badge{flex-shrink:0;padding:2px 8px;border-radius:11px;background:#c98a1b;color:#fff;font-size:12px;font-weight:600;line-height:18px;white-space:nowrap}
+/* Settings list rows (settings-menu.js): the Screen & app links sized like its buttons. The setup count now sits on the setup card in the
+   Mayor's thread (manage.js), so the list has no badge. */
 #settings-screen .menu-items>button,#settings-screen .menu-items>a{box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:2px;min-height:44px;padding:8px 12px;border:1px solid var(--line,#e6e0cf);border-radius:12px;background:#fffdf8;color:inherit;font-size:15px;text-decoration:none}
 #settings-screen .menu-items [data-note]::after{content:attr(data-note);flex-basis:100%;font-size:12px;line-height:1.35;color:var(--muted,#6b6657);font-weight:400}

@@ -1,10 +1,10 @@
 // Sign-in clients (plan D6, 3.3): the owner's own Google Cloud "Desktop app" client and Microsoft app registration, set up once, so each
-// Google or Microsoft account added after is one sign-in. ☰ > Devices & AI > Sign-in clients opens this panel. Routes (src/connectors.ts,
+// Google or Microsoft account added after is one sign-in. Post office > Sign-ins > Advanced > Sign-in clients opens this panel. Routes (src/connectors.ts,
 // src/owner-clients.ts): GET /api/owner-clients and GET /api/owner-clients/setup (the steps rendered here, in order) for owners;
 // PUT and DELETE /api/owner-clients/:provider on the host computer only, since a client secret is a secret. The server never sends a
 // secret back, only whether one is saved. The pure helpers are exported for Node tests; the DOM is built with textContent only.
 import {confirmDialog} from './dialogs.js';
-import {copyBox, devicesEntry, h, msgNode, ownerDialog, readJson, sendJson} from './owner-dialog.js';
+import {copyBox, postOfficeEntry, h, msgNode, ownerDialog, readJson, sendJson} from './owner-dialog.js';
 
 export const PROVIDERS = [['google', 'Google'], ['microsoft', 'Microsoft']];
 export const HOST_ONLY = 'Sign-in clients are changed on the host computer.';
@@ -44,7 +44,7 @@ export function clientDraft(provider, {clientId, clientSecret, tenant} = {}) {
   return {body: {clientId: id, ...(t ? {tenant: t} : {})}};
 }
 
-/** The ☰ entry's note while the panel is closed. */
+/** The Post office entry's note while the panel is closed. */
 export function entrySummary(clients) {
   const ready = PROVIDERS.filter(([p]) => clients?.[p]).map(([, name]) => name);
   return ready.length ? `${ready.join(' and ')} set up` : 'Your own Google and Microsoft clients, set up once';
@@ -154,10 +154,10 @@ export function createOwnerClientsPanel({doc = document, win = globalThis.window
   return {open, close: () => dialog.close(), refresh, probe, dialog, summary: () => ui.summary};
 }
 
-/** ☰ > Devices & AI > Sign-in clients, shown once the owner route answers. */
+/** Post office > Sign-ins > Advanced > Sign-in clients, shown once the owner route answers. */
 export function initOwnerClientsPanel(options = {}) {
   const doc = options.doc ?? document, panel = createOwnerClientsPanel(options);
-  const entry = devicesEntry(doc, {id: 'owner-clients-open', text: 'Sign-in clients', note: 'Your own Google and Microsoft clients, set up once', open: panel.open});
+  const entry = postOfficeEntry(doc, {id: 'owner-clients-open', group: 'signins-advanced', text: 'Sign-in clients', note: 'Your own Google and Microsoft clients, set up once', open: panel.open});
   void panel.probe().then(ok => { if (entry) { entry.hidden = !ok; if (ok) entry.setAttribute('data-note', panel.summary()); } });
   return panel;
 }

@@ -3,7 +3,7 @@
 // The layout is mirrored, so going back is a copy back. It walks an allow list, never readRegistry(): a damaged worlds.json is exactly when
 // a copy matters. Out by construction: read-model.db, pre-compact files, *.pre-secrets-*.bak (plaintext), devices.json (device cookies),
 // push-subscriptions.json, remote-settings.json, rendezvous.json, vapid.json, cat-browser.json, tunnel/, browser/, wiki/ (a mirror of the
-// journal) and backups/ itself. The owner session key is never on disk.
+// journal) and backups/ itself, and owner-key (plan 11.27, access.ts), which stays on this computer.
 // Copy, not hard link: journals are appended in place, so a hard link would change with them. COPYFILE_FICLONE asks for a copy-on-write
 // clone where the volume supports one (ReFS, Btrfs, APFS) and falls back to a plain copy on NTFS, about 25 MB per snapshot.
 import {closeSync,constants,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,readFileSync,readdirSync,renameSync,rmSync} from 'node:fs';

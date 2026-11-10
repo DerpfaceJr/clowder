@@ -1,7 +1,8 @@
 // Item 5.2 of docs/product-plan.md: control from the same Wi-Fi after pairing. The real server runs with LAN sharing on (bound to loopback, so no
-// firewall prompt), and every route of the main listener is asked by a LAN owner device, a LAN viewer and an unpaired LAN client.
+// firewall prompt), and every route of the main listener is asked by a LAN owner device, a LAN viewer, a LAN member and an unpaired LAN client.
 import test,{after,before} from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash,randomBytes} from 'node:crypto';
 import {mkdtempSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -10,10 +11,18 @@ import {variants} from './route-variants.ts';
 
 let dir='',port=0,app:FastifyInstance,remoteApp:FastifyInstance;
 const realFetch=globalThis.fetch,PHONE='192.168.1.21',OWNER_KEY='lan-control-owner-key';
+// A member device (plan 10.3), on file before the start. Invites (10.4) are asked in test/device-roles.test.ts.
+const MEMBER=randomBytes(32).toString('hex');
+// The member allow-list of plan §4.4, written out by hand as in test/device-roles.test.ts, so a wrong list in access.ts fails here too.
+const MEMBER_ROUTES=new Set(['GET /api/state','GET /api/events','GET /api/chats/:cat','GET /api/threads/:task','GET /api/search','GET /api/projects',
+  'GET /api/season','GET /api/goals','GET /api/artifacts','GET /artifacts/:id','GET /artifacts/:id/raw','GET /api/remote-access','GET /api/step-up',
+  'POST /api/chat','POST /api/approvals/:id','POST /api/logout','POST /api/step-up/register/options','POST /api/step-up/register']);
 before(async()=>{
   dir=mkdtempSync(join(tmpdir(),'lan-control-'));
   writeFileSync(join(dir,'connectors.json'),JSON.stringify({connectors:[],plugins:[]}));
   writeFileSync(join(dir,'workshop-settings.json'),JSON.stringify({autoSetup:false}));
+  writeFileSync(join(dir,'devices.json'),JSON.stringify([{id:'lan-member',name:'Member laptop',permission:'member',person:'p-member',tokenHash:createHash('sha256').update(MEMBER).digest('hex'),createdAt:Date.now(),expiresAt:Date.now()+86_400_000}]));
+  writeFileSync(join(dir,'people.json'),JSON.stringify([{id:'p-member',name:'Member',role:'member',createdAt:Date.now()}]));
   globalThis.fetch=(async()=>new Response(null,{status:503})) as typeof fetch;
   port=30000+Math.floor(Math.random()*20000);
   Object.assign(process.env,{PORT:String(port),CAT_REMOTE_PORT:String(port+1),CAT_TOWN_DATA:dir,CAT_TUNNEL_AUTOSTART:'0',CAT_TOWN_LAN:'1',CAT_TOWN_BIND:'127.0.0.1',CAT_OWNER_KEY:OWNER_KEY});
@@ -50,7 +59,7 @@ const ask=(route:{method:string;url:string},cookie?:string)=>app.inject({method:
 test('a LAN owner device controls the town; device management, the tunnel, secrets and money settings stay host-only',async()=>{
   const owner=await pairLan('owner'),viewer=await pairLan('viewer');
   const names=(await app.inject({url:'/api/remote/status',headers:host()})).json().devices.map((d:{name:string;permission:string})=>`${d.name}:${d.permission}`);
-  assert.deepEqual(names.sort(),['Same Wi-Fi owner:owner','Same Wi-Fi viewer:viewer'],'Devices names each LAN device by its permission');
+  assert.deepEqual(names.sort(),['Member laptop:member','Same Wi-Fi owner:owner','Same Wi-Fi viewer:viewer'],'Devices names each LAN device by its permission');
   const state=(cookie:string)=>app.inject({url:'/api/state',headers:lan(cookie),remoteAddress:PHONE});
   assert.equal((await state(owner)).json().readOnly,false);
   assert.equal((await state(viewer)).json().readOnly,true);
@@ -67,34 +76,37 @@ test('a LAN owner device controls the town; device management, the tunnel, secre
   }
 });
 
-test('route matrix on the LAN listener: an owner device gets exactly the tunnel listener\'s owner surface, a viewer reads, an unpaired client gets nothing',{timeout:120_000},async t=>{
+test('route matrix on the LAN listener: an owner device gets exactly the tunnel listener\'s owner surface, a viewer reads, a member gets the allow-list, an unpaired client gets nothing',{timeout:120_000},async t=>{
   const owner=await pairLan('owner'),viewer=await pairLan('viewer');
   const key=(r:{method:string;url:string})=>`${r.method} ${r.url}`,onRemote=new Set(routes(remoteApp).map(key));
   const mainRoutes=routes(app).filter(r=>!(r.method==='GET'&&r.url==='/api/events'));
   assert.ok(mainRoutes.length>=80,`the route tree was read: ${mainRoutes.length}`);
   const guarded=(url:string)=>/^\/(api|app|artifacts)\//.test(url),pairing=(r:{method:string;url:string})=>r.method==='POST'&&r.url==='/api/viewer-session';
   const counts:Record<string,number>={};
-  for(const [role,cookie] of [['owner',owner],['viewer',viewer],['unpaired',undefined]] as const){
+  for(const [role,cookie] of [['owner',owner],['viewer',viewer],['member',`town_device=${MEMBER}`],['unpaired',undefined]] as const){
     for(const route of mainRoutes){
       const {statusCode:s,body}=await ask(route,cookie),at=`lan ${role} ${key(route)} -> ${s} ${body.slice(0,120)}`;
       const k=`${role} ${onRemote.has(key(route))?'tunnel route':'main-only'} ${s}`;counts[k]=(counts[k]??0)+1;
       assert.ok(s<500,at);
       const write=route.method!=='GET';
       // The host-only exceptions on routes the tunnel also serves: device management (/api/remote/), money settings, new webhook links.
-      const hostOnly=route.url.startsWith('/api/remote/')||(write&&(route.url.startsWith('/api/real-money/')||route.url==='/api/routines/:id/hook'));
+      const hostOnly=route.url.startsWith('/api/remote/')||(write&&(route.url.startsWith('/api/real-money/')||route.url==='/api/routines/:id/hook'||route.url==='/api/owner-key/rotate'||route.url.startsWith('/api/owner-tokens')));
       if(role==='owner'&&onRemote.has(key(route))&&!pairing(route))assert.ok(hostOnly?s===403||s===400:s!==401&&s!==403,at);
       if(role==='owner'&&!onRemote.has(key(route))&&write&&!pairing(route))assert.equal(s,403,at);
       if(role==='viewer'){assert.notEqual(s,401,at);if(write&&!pairing(route))assert.equal(s,403,at);}
+      // The member gate (plan 10.5): past the gate on an allow-listed tunnel route (an empty body may still stop at its schema), 403 on every other
+      // town route or write. The app's own pages load, as for anyone on the Wi-Fi.
+      if(role==='member'&&!pairing(route)){if(MEMBER_ROUTES.has(key(route))&&onRemote.has(key(route)))assert.ok(s!==401&&s!==403,at);else if(write||guarded(route.url))assert.equal(s,403,at);}
       if(role==='unpaired'&&!pairing(route))assert.ok(write?s===403:guarded(route.url)?s===401:s!==401,at);
     }
   }
   for(const [k,n] of Object.entries(counts).sort())t.diagnostic(`${k}: ${n}`);
 });
 
-test('encoded paths on the LAN listener: every route bent six ways gets nothing past the gate for an owner device, a viewer or an unpaired client',{timeout:300_000},async()=>{
+test('encoded paths on the LAN listener: every route bent six ways gets nothing past the gate for an owner device, a viewer, a member or an unpaired client',{timeout:300_000},async()=>{
   const owner=await pairLan('owner'),viewer=await pairLan('viewer');
   const at=(method:string,url:string,cookie?:string)=>app.inject({method:method as any,url,headers:lan(cookie),remoteAddress:PHONE,...(method==='GET'?{}:{payload:'{}'})});
-  for(const [role,cookie] of [['owner',owner],['viewer',viewer],['unpaired',undefined]] as const){
+  for(const [role,cookie] of [['owner',owner],['viewer',viewer],['member',`town_device=${MEMBER}`],['unpaired',undefined]] as const){
     for(const route of routes(app).filter(r=>!(r.method==='GET'&&r.url==='/api/events'))){
       for(const v of variants(concrete(route.url))){
         const {statusCode:s,body}=await at(route.method,v.url,cookie),where=`lan ${role} ${route.method} ${v.url} (${route.url}) -> ${s} ${body.slice(0,100)}`;
@@ -107,4 +119,19 @@ test('encoded paths on the LAN listener: every route bent six ways gets nothing 
   // Not probed by the security pass, named there: a viewer's encoded /api/remote/ read past the host-only hook.
   assert.equal((await at('GET','/api/%72emote/status',viewer)).statusCode,400);
   assert.equal((await at('GET','/%61pi/state')).statusCode,400);
+});
+
+// Plan 10.5 on the Same Wi-Fi listener: a LAN member device reads the town and talks to the Mayor, and is refused another cat, worlds, money and
+// main-only routes, as on the tunnel listener.
+test('the member gate on the LAN listener: a member reads and talks to the Mayor; other cats, worlds, money and main-only routes answer 403',async()=>{
+  const as=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:lan(`town_device=${MEMBER}`),remoteAddress:PHONE,...(payload===undefined?{}:{payload:JSON.stringify(payload)})});
+  const state=await as('GET','/api/state');
+  assert.equal(state.statusCode,200,state.body);assert.equal(state.json().readOnly,true);
+  assert.equal((await as('POST','/api/chat',{cat:'mayor',text:'Hello from the Wi-Fi.',mode:'demo'})).statusCode,200);
+  assert.equal((await as('POST','/api/chat',{cat:'scout',text:'Hello.',mode:'demo'})).statusCode,403);
+  const noAction=await app.inject({method:'POST',url:'/api/chat',headers:{...lan(`town_device=${MEMBER}`),'x-town-action':''},remoteAddress:PHONE,payload:{cat:'mayor',text:'Hi.',mode:'demo'}});
+  assert.equal(noAction.statusCode,403,'a write still needs the action header');
+  for(const [method,url,payload] of [['GET','/api/worlds'],['GET','/api/real-money'],['GET','/api/usage'],['GET','/api/connectors'],['GET','/api/sharing'],['GET','/api/remote/status'],
+    ['GET','/api/for-you'],['POST','/api/remote/people',{name:'Me'}],['POST','/api/approvals/x',{answer:'Yes',approved:true}],['POST','/api/pause',{value:true}]] as const)
+    assert.equal((await as(method,url,payload)).statusCode,403,`${method} ${url}`);
 });

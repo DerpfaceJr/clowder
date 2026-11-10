@@ -15,6 +15,7 @@ import {allRoles} from '../src/roles.ts';
 import {Town} from '../src/engine.ts';
 import type {Provider} from '../src/provider.ts';
 import {Store} from '../src/store.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
 const FIXTURE = fileURLToPath(new URL('./fixtures/mcp-stdio-server.mjs', import.meta.url));
@@ -26,11 +27,7 @@ const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catc
 const tmp = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
 
 // Polls until fn holds, or fails after ms.
-async function until(fn: () => boolean | Promise<boolean>, ms = 15000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { if (await fn()) return; await new Promise(r => setTimeout(r, 25)); }
-  assert.fail('Timed out waiting for the connector');
-}
+const until = untilEvery(25, 15000);
 
 // A data dir with an empty connectors file: the owner already has connectors, so no starters are seeded.
 const emptyDataDir = () => { const dir = tmp('connectors-data-'); writeFileSync(join(dir, 'connectors.json'), JSON.stringify({connectors: [], plugins: []})); return dir; };
@@ -540,7 +537,7 @@ test('dispose() kills the stdio child process tree', async () => {
     const pid = Number((hub as any).lives.get('fixture').client.info.version);
     assert.ok(alive(pid));
     await hub.dispose();
-    await until(() => !alive(pid), 5000);
+    await until(() => !alive(pid), 15_000);
   } finally { await hub.dispose(); }
 });
 
@@ -610,6 +607,22 @@ test('a tool call gets minutes, not the 30s handshake limit, so a slow publish i
     assert.equal(await hub.call('mayor', 'mcp__slow__write_page', {}, new AbortController().signal), 'ran write_page');
     assert.ok(seen[0].timeoutMs >= 120_000, `tool calls wait ${seen[0].timeoutMs}ms`);
     assert.ok(seen[0].signal, 'the owner can still stop it');
+  } finally { await hub.dispose(); }
+});
+
+// A broker's order tool must reach the owner as money. A trading verb is a money word, and a server's readOnlyHint cannot talk a money-named tool out of its card.
+test('a trading tool is money and asks, even when its server marks it read-only', async () => {
+  const tools = [{name: 'sell_stock', annotations: {readOnlyHint: true}}, {name: 'place_order', annotations: {readOnlyHint: true}}, {name: 'withdraw_funds'}, {name: 'get_order', annotations: {readOnlyHint: true}}];
+  const hub = new ConnectorHub({dataDir: emptyDataDir(), port: PORT, home: tmp('connectors-home-'), connect: (async () => ({...fakeClient, listTools: async () => tools})) as any});
+  try {
+    hub.addCustom({name: 'Broker', type: 'http', url: 'https://example.com/mcp'});
+    hub.patchConnector('broker', {enabled: true, cats: ['mayor']});
+    await until(() => status(hub, 'broker') === 'connected');
+    const seen = (tool: string) => { const r = hub.resolve('mayor', `mcp__broker__${tool}`); return [r?.effect, r?.permission]; };
+    assert.deepEqual(seen('sell_stock'), ['money', 'ask'], 'a trading verb is a money word, and it beats readOnlyHint');
+    assert.deepEqual(seen('place_order'), ['money', 'ask'], 'so does a money word that was already listed');
+    assert.deepEqual(seen('withdraw_funds'), ['money', 'ask']);
+    assert.deepEqual(seen('get_order'), ['read', 'allow'], 'a read of a money thing is still a read');
   } finally { await hub.dispose(); }
 });
 

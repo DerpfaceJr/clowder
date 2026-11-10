@@ -8,6 +8,9 @@
   "maxCats": 64,
   "modelTimeoutMs": 300000,
   "mailWatch": {"intervalSeconds": 120},
+  "forYou": {"intervalSeconds": 900, "floorSeconds": 300, "categories": {"reply": true, "prep": true, "repeat": true, "quiet": true},
+    "rules": {"replyAfterHours": 4, "replyWithinDays": 7, "prepWithinHours": 24, "repeatWindowDays": 30, "repeatMin": 3, "quietDays": 7},
+    "triage": {"topPerPass": 10, "tokensPerPass": 4000, "tokensPerDay": 40000}},
   "planTimeoutStrikes":3,
   "localModel": "qwen3.5:4b",
   "planModel": "haiku",
@@ -72,6 +75,7 @@
       "hold_ease": 14,
       "knolls": [0.016, 3.2],
       "knoll_clear": [2, 18],
+      "rolling": {"frequency": 0.0055, "height": 6, "ramp": 110, "ridges": 0.4, "dips": 1.2},
       "clearing": {
         "meadow_radii": 1.5,
         "forest_radii": 2.6,
@@ -175,6 +179,15 @@
       "role": "Showcase media and image generation, visual work and web pages. Describe what was actually made; nothing is published unless the owner says so.",
       "color": "#e58fb8",
       "icon": "✿"
+    },
+    {
+      "id": "mailman",
+      "name": "Mailman",
+      "role": "Carry the town's messages and look after its channels and sign-ins. Report their status; never sign in, send or publish without the owner's approval.",
+      "color": "#7db4d8",
+      "icon": "✉",
+      "style": "mailman",
+      "founder": true
     }
   ],
   "council": {
@@ -189,6 +202,7 @@
     "autoSetup": true
   },
   "economy": {
+    "enabled": false,
     "startingCoins": 1000,
     "ticksPerDay": 4,
     "days": 7,

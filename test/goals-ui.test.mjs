@@ -117,7 +117,7 @@ test('only the round prompt to the Mayor is a round: the owner’s own words and
 });
 
 test('a long round title is cut at a word as everywhere else, and a missing one still reads as a round', async () => {
-  const {oneLiner} = await import('../public/hologram.js');
+  const {oneLiner} = await import('../public/one-liner.js');
   for (const title of ['word '.repeat(40).trim(), 'x'.repeat(120), 'A short title']) {
     assert.equal(roundStarted({round: 4, title}), `Round 4 of “${oneLiner(title, 90)}” started`);
   }
@@ -128,7 +128,8 @@ test('chat and the diary show rounds through the same line, and the town has a n
   // Line endings are normalised: a Windows checkout has CRLF, and the patterns below expect \n.
   const app = ['app.js', 'chat-thread.js'].map(f => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8')).join('\n').replace(/\r\n/g, '\n');
   assert.match(app, /import \{goalRound,roundStarted\} from '\.\/town-events\.js';/);
-  assert.match(app, /messages\.map\(m=>\{const round=goalRound\(m\);if\(round\)return `<p class="chat-event">\$\{escape\(roundStarted\(round\)\)\}&nbsp;·&nbsp;<time>/, 'chat: a quiet line, never a "You" bubble');
+  assert.match(app, /const round=goalRound\(m\)[^\n]*\n\s*if\(round\)items\.push\(\{kind:'round',key:m\.id,m,round\}\)/, 'chat: a round message becomes a round row (chat-thread.js threadItems)');
+  assert.match(app, /if\(item\.kind==='round'\)return html`<p class="chat-event">\$\{roundStarted\(item\.round\)\}\\u00a0·\\u00a0<time>/, 'chat: a quiet line, never a "You" bubble');
   assert.match(app, /const round=goalRound\(d\);\n\s*return round\?\{e,text:roundStarted\(round\)\}/, 'diary: the same line');
   assert.match(app, /\{owner:'You',system:'Town',town:'Town'\}\[id\]/);
   assert.ok(!/from==='owner'&&\/\^Goal round/.test(app), 'no second copy of the round rule');

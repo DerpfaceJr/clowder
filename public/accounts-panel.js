@@ -1,4 +1,4 @@
-// Accounts & connections (plan 1.9): the one place the owner signs in to services and says what the cats may use. ☰ > Devices & AI opens it on
+// Accounts & connections (plan 1.9): the one place the owner signs in to services and says what the cats may use. Post office > Sign-ins opens it on
 // the host computer. One row per account, grouped by service: its label, who it is signed in as, its health, when the sign-in ends, Reconnect,
 // which cats may use it and each tool's Allow / Ask first / Off, plus Add another account. Add from the directory (assistant services first)
 // switches the service on, gives it to every cat and starts its sign-in in one tap. The AI models, the chat channels, the cats' browser and the
@@ -16,6 +16,8 @@ import {statusLine as discordLine} from './discord-panel.js';
 import {secretsNote} from './settings-menu.js';
 
 export const POLL_MS = 2000, CONNECTING_STALE_MS = 20_000, SIGN_IN_MS = 600_000;
+/** The panel's one name: its heading, the Post office entry, the palette row and the Setup hub's button all say it. */
+export const ACCOUNTS_NAME = 'Accounts & connections';
 const DAY = 86_400_000, HOUR = 3_600_000;
 const enc = encodeURIComponent;
 const list = v => (Array.isArray(v) ? v : []);
@@ -84,19 +86,21 @@ export function expiryLine(expiresAt, now = Date.now(), refreshable = false) {
 export const isReference = c => c?.source === 'directory' && (c.auth ?? 'none') === 'none' && !list(c.vars).length;
 /** Connected by the owner (ux-audit F12): on, working, and an account the owner signed in to or added, not a starter. */
 export const ownerConnected = c => !!c && c.enabled !== false && c.status === 'connected' && c.auth !== 'expired' && !isReference(c);
-/** An account the owner must act on. */
-export const needsYou = c => !!c && c.enabled !== false && !isReference(c) && ['warn', 'error'].includes(healthOf(c).tone) && healthOf(c).state !== 'connecting';
+/** An account the owner must sign in to again or fix. Not the Inbox's "needs you" count (quests-panel.js needsYouCount): that one badge counts
+ *  quests, and a broken sign-in reaches it as its own to-do (accounts.ts), so this list keeps its own words (plan 11.8, N13). */
+export const needsSignIn = c => !!c && c.enabled !== false && !isReference(c) && ['warn', 'error'].includes(healthOf(c).tone) && healthOf(c).state !== 'connecting';
 
-/** The line at the top: how many accounts work and how many need the owner. */
+/** The line at the top: how many accounts work and how many need a sign-in. */
 export function summaryLine(connectors) {
-  const all = list(connectors), ready = all.filter(ownerConnected).length, needs = all.filter(needsYou).length;
+  const all = list(connectors), ready = all.filter(ownerConnected).length, needs = all.filter(needsSignIn).length;
   if (!ready && !needs) return 'Nothing connected yet. Add a service below.';
-  return [ready ? `${ready} connected` : '', needs ? `${needs} need${needs === 1 ? 's' : ''} you` : ''].filter(Boolean).join(' · ');
+  return [ready ? `${ready} connected` : '', needs ? `${needs} need${needs === 1 ? 's' : ''} a sign-in` : ''].filter(Boolean).join(' · ');
 }
 
 // The directory, assistant services first (F12): email and calendar, then the everyday work apps, then the build tools, then reference docs.
+// The first group is "Everyday apps", not "For you": For you is the Inbox's suggestions feature (D16, plan 11.8, N7).
 export const ASSISTANT_FIRST = ['google-workspace', 'ms-365', 'github', 'notion', 'canva', 'figma', 'linear', 'asana', 'atlassian', 'monday', 'hubspot', 'intercom', 'stripe', 'paypal', 'square', 'composio'];
-export const DIRECTORY_GROUPS = [['assistant', 'For you'], ['build', 'For building'], ['reference', 'Reference for cats · no sign-in']];
+export const DIRECTORY_GROUPS = [['assistant', 'Everyday apps'], ['build', 'For building'], ['reference', 'Reference for cats · no sign-in']];
 export const groupOf = d => (ASSISTANT_FIRST.includes(d?.id) ? 'assistant' : (d?.auth ?? 'none') === 'none' ? 'reference' : 'build');
 /** The directory in that order, filtered by the search text. */
 export function directoryOrder(items, query = '') {
@@ -141,6 +145,15 @@ export function catsLine(cats, everyCat = []) {
   return `${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''} may use it.`;
 }
 
+/** Who may use an account (plan 10.8, D14 a): the connectors listing's scope. Owner-only is the default; team lets a member's work use it. */
+export const SCOPES = [['owner', 'Only my work'], ['team', 'Team members too']];
+export const scopeOf = c => (c?.scope === 'team' ? 'team' : 'owner');
+export function scopeLine(scope) {
+  return scope === 'team'
+    ? 'Team: work a team member starts may use this account, still asking first as its tools say. Their decisions on it are theirs to answer.'
+    : 'Only you (the default): your own work uses it. A team member’s work that needs it waits for you.';
+}
+
 // The AI models, by GET /api/models/status. kind: a plan signs in, a key is pasted, local answers on this computer.
 export const MODEL_ROWS = [['claude', 'Claude plan', 'plan'], ['chatgpt', 'ChatGPT plan', 'plan'], ['anthropic', 'Anthropic API', 'key'], ['hosted', 'API', 'key'], ['local', 'Local AI', 'local'], ['jev', 'Jev decisions', 'key']];
 /** One model's health, or null when it is not set up at all (those are named on one line instead). */
@@ -167,7 +180,7 @@ function injectStyles(doc) {
   doc.head.append(link);
 }
 
-/** button: the ☰ entry, shown once the owner's route answers. openSurface(name): another panel (AI models, Telegram, Discord, Connectors). */
+/** button: the Post office entry, shown once the owner's route answers. openSurface(name): another panel (AI models, Telegram, Discord, Connectors). */
 export function createAccountsPanel({button = null, doc = document, win = globalThis.window, fetchImpl = (...a) => fetch(...a), ask = confirmDialog, now = () => Date.now(), openSurface = name => win?.openSurface?.(name)} = {}) {
   injectStyles(doc);
   const state = {connectors: [], directory: [], cats: [], builtins: {}, sites: [], browser: null, models: null, telegram: null, discord: null, secrets: null};
@@ -189,11 +202,12 @@ export function createAccountsPanel({button = null, doc = document, win = global
   };
 
   const back = h('button', {className: 'back-pill phone-only', text: '← Town', attrs: {type: 'button', 'aria-label': 'Back to town'}});
-  const closeX = h('button', {className: 'close-x desk-only', text: '×', attrs: {type: 'button', 'aria-label': 'Close accounts'}});
+  const closeX = h('button', {className: 'close-x desk-only', text: '×', attrs: {type: 'button', 'aria-label': `Close ${ACCOUNTS_NAME}`}});
   const body = h('div', {className: 'ac-body'});
   const dialog = h('dialog', {className: 'accounts-dialog', attrs: {id: 'accounts-dialog', 'aria-labelledby': 'accounts-title'}},
-    h('div', {className: 'treasury-dialog-title ac-top'}, back, h('span', {className: 'eyebrow', text: 'THE ACCOUNTS'}), closeX),
-    h('h2', {text: 'Accounts & connections', attrs: {id: 'accounts-title'}}),
+    // The line above the heading says where the panel lives; the heading is its one name (ACCOUNTS_NAME).
+    h('div', {className: 'treasury-dialog-title ac-top'}, back, h('span', {className: 'eyebrow', text: 'THE POST OFFICE'}), closeX),
+    h('h2', {text: ACCOUNTS_NAME, attrs: {id: 'accounts-title'}}),
     h('p', {className: 'ac-lede', text: 'Sign in once and say what your cats may use. Every account and its health is here.'}),
     body);
   back.onclick = () => dialog.close();
@@ -353,6 +367,7 @@ export function createAccountsPanel({button = null, doc = document, win = global
         h('div', {className: 'ac-row-title'}, h('strong', {className: named ? 'ac-service-name' : '', text: c.name}), who ? h('p', {className: 'ac-who', text: `Signed in as ${who}`}) : !ref && s.state === 'unchecked' ? h('p', {className: 'ac-who muted', text: 'Nobody checked who it signs in as.'}) : null),
         dot(s)),
       expiry ? h('p', {className: 'ac-expiry', text: expiry}) : null,
+      !ref && scopeOf(c) === 'team' ? h('p', {className: 'ac-hint ac-scope', text: 'Team members’ work may use it.'}) : null,
       reason ? h('p', {className: 'cx-err-line ac-reason', text: String(reason)}) : null,
       signing ? signInBox(signing.plan, {name: c.name, fetchImpl, clipboard: win?.navigator?.clipboard, onDone: () => { ui.signing.delete(c.id); void refresh(true); }}) : null,
       h('div', {className: 'ac-actions'}, mainAction(c, s, key), ref ? null : disclose(open ? 'Hide' : 'Cats and tools', `row:${c.id}`, `${key}:more`)),
@@ -406,7 +421,12 @@ export function createAccountsPanel({button = null, doc = document, win = global
         const chosen = !all && cats.includes(cat.id), next = chosen ? cats.filter(x => x !== cat.id) : [...cats.filter(x => x !== '*'), cat.id];
         return btn(cat.name, `${key}:cat:${cat.id}`, () => void act(key, () => write(`connectors/${enc(c.id)}`, {cats: all ? [cat.id] : next}, 'PATCH')), 'cx-chip', {'aria-pressed': String(chosen)});
       })) : null;
+    const scope = scopeOf(c);
+    const scopeBtn = ([value, text]) => btn(text, `${key}:scope:${value}`, () => { if (scope !== value) void act(key, () => write(`accounts/${enc(c.id)}/scope`, {scope: value}, 'PUT')); }, 'cx-seg-btn', {'aria-pressed': String(scope === value)});
     return h('div', {className: 'ac-details'},
+      h('p', {className: 'ac-sub', text: 'Who may use it', attrs: {id: `ac-scope-${c.id}`}}),
+      h('div', {className: 'cx-seg ac-two', attrs: {role: 'group', 'aria-labelledby': `ac-scope-${c.id}`}}, SCOPES.map(scopeBtn)),
+      h('p', {className: 'ac-hint', text: scopeLine(scope)}),
       h('p', {className: 'ac-hint', text: catsLine(cats, state.cats)}),
       chips,
       tools.length ? h('p', {className: 'ac-sub', text: `What cats may do (${plural(tools.length, 'tool')})`}) : h('p', {className: 'ac-hint', text: 'Its tools show here once it is connected.'}),

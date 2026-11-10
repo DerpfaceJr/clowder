@@ -22,7 +22,11 @@ export type AccountStatus = 'requested' | 'signing-in' | 'connected' | 'expiring
 export type Identity = {handle?: string; email?: string; accountId?: string; checkedAt: number};
 // identity is fetched, never typed (item 1.3), so it is null until then. connector: the connector this account is, when it is one.
 // expected: who the owner means this account to be (a handle or an email); without it, the @handle in the label (expectedOf).
-export type Account = {id: string; service: string; label: string; kind: AccountKind; identity: Identity | null; expected?: string; secretRef: string | null; status: AccountStatus; expiresAt: number | null; refreshable: boolean; lastOkAt: number | null; lastError: string | null; connector?: string};
+// scope (plan 10.8, D14 a): 'team' when the owner let members' trees use it; absent means owner-only, so older files read as owner with no write.
+export type Account = {id: string; service: string; label: string; kind: AccountKind; identity: Identity | null; expected?: string; secretRef: string | null; status: AccountStatus; expiresAt: number | null; refreshable: boolean; lastOkAt: number | null; lastError: string | null; connector?: string; scope?: 'team'};
+export type AccountScope = 'owner' | 'team';
+/** Owner-only unless the owner marked it team-scoped: anything else on disk, or no account at all, is the timid default. */
+export const scopeOf = (a: Pick<Account, 'scope'> | undefined): AccountScope => a?.scope === 'team' ? 'team' : 'owner';
 // world: the world it applies in, or EVERY_WORLD. '*' in cats means every cat of that world. tools: each tool's choice for every cat;
 // catTools: one cat's own choice (item 1.4, "Always allow (this cat)"), over tools.
 export type Grant = {account: string; cats: string[]; tools: Record<string, ToolPermission>; catTools?: Record<string, Record<string, ToolPermission>>; world: string};
@@ -300,6 +304,7 @@ export class AccountMonitor {
   }
 
   // The quest is an owner step, so it gets Mark done, the phone, and for a directory service the Connect button that signs in again.
+  // The Mailman files it when the town has one (he looks after sign-ins), else the Mayor.
   // browser: a cats'-browser site's own title, steps, cat and page, over the defaults.
   private fileStep(store: Store, a: Account, status: AccountStatus, reason: string, who: string | null, want: string | null, browser?: BrowserStep): string {
     const id = randomUUID(), dir = a.connector ? directoryEntry(a.connector) : undefined;
@@ -308,7 +313,7 @@ export class AccountMonitor {
     const how = dir ? `Tap Connect ${dir.name} to sign in again.` : cli ? `Run \`${cli}\` in a terminal.` : `In Connectors, open ${a.label} and sign in again or paste a new token.`;
     const title = status === 'wrong-account' ? `${a.label} is signed in as ${who}, not ${want}` : status === 'expiring' ? `${a.label} sign-in ends soon` : status === 'expired' ? `${a.label} sign-in expired` : status === 'error' ? `${a.label} is not answering` : `Sign in to ${a.label}`;
     const steps = status === 'wrong-account' ? `Sign in again as ${want}. Until then, cats using ${a.label} act as ${who}. ${how}` : `${reason} ${how} This one quest covers every cat that uses it.`;
-    store.emit('owner.step', {id, goal: null, cat: 'mayor', title, steps, blocking: false, kind: 'account', account: a.id, ...(dir ? {connect: dir.id} : {}), ...(status === 'needs-sign-in' && browser ? {...browser, browser: true} : {})});
+    store.emit('owner.step', {id, goal: null, cat: store.state.cats.some(c => c.id === 'mailman') ? 'mailman' : 'mayor', title, steps, blocking: false, kind: 'account', account: a.id, ...(dir ? {connect: dir.id} : {}), ...(status === 'needs-sign-in' && browser ? {...browser, browser: true} : {})});
     return id;
   }
 }

@@ -11,7 +11,7 @@ import {sfx} from './audio.js';
 export const INTRO_STEPS=[{id:'open',seconds:1.2},{id:'descend',seconds:3.2},{id:'hello',seconds:3.6,line:0},{id:'ask',seconds:3.6,line:1},{id:'tour',seconds:5,line:2},{id:'outro',seconds:2}];
 export const INTRO_SECONDS=INTRO_STEPS.reduce((a,s)=>a+s.seconds,0);
 export function introLines(worldName){
-  return [`Hello! I'm the Mayor of ${String(worldName||'').trim()||'this town'}.`,"Tell me what you'd like to build, and I'll gather the right cats for the job.",'Our coins live in the treasury, and the observatory remembers every cat who rests.'];
+  return [`Hello! I'm the Mayor of ${String(worldName||'').trim()||'this town'}.`,"Tell me what you'd like to build, and I'll gather the right cats for the job.",'The Moonvault keeps count of what we spend, and the observatory remembers every cat who rests.'];
 }
 /** The step at t seconds into the flight: {id, k (0..1 inside it), line}; past the end, {id:'done', k:1}. */
 export function introAt(t){
@@ -151,6 +151,9 @@ export function createIntro({camera,controls,canvas,reduced,spot,head,ready,onEn
     check(state){
       if(played||!state)return;
       const force=new URLSearchParams(location.search).has('intro');
+      // The welcome plays over a quiet first screen only. With a dialog open or words in the composer the owner has begun: the flight
+      // would run behind the dialog, or hide the box being typed in, so it is left for the next launch (not marked seen).
+      if(!force&&state.introPending===true&&(document.querySelector('dialog:modal')||document.getElementById('message')?.value)){played=true;return;}
       if(shouldPlayIntro(state,{seen:seen(state),force}))try{start(state);}catch(error){console.warn('Intro could not start:',error);if(s){s={...s,done:true};finish();}}
     },
     /** Drives the camera while the flight plays; returns true while it does (town.js then drops its own camera glide). */

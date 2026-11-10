@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   scheduleCron, pickerOf, clockText, whenText, describeSchedule, runTime, routineFacts, routineDraft, catChoices, modelChoices, defaultMode,
-  rowSummary, hookUrl, TEMPLATES, WHEN, HOOK_403, createRoutinesPanel, briefingLead,
+  rowSummary, hookUrl, TEMPLATES, WHEN, HOOK_403, createRoutinesPanel, briefingLead, lastRun, runRow,
 } from '../public/routines-panel.js';
-import {nextRunAt, routineWarning, BRIEF} from '../src/routines.ts';
+import {nextRunAt, BRIEF} from '../src/routines.ts';
 import {speakableText, speechChunks, createListener} from '../public/briefing-listen.js';
 
 test('each schedule picker choice becomes a 5-part cron, and "only when I run it" has none', () => {
@@ -83,14 +83,14 @@ test('the form makes the POST body, or names the first problem', () => {
   assert.match(routineDraft({title: 'a', prompt: 'b', when: {kind: 'daily', time: 'noon'}}).error, /time/);
 });
 
-test('the starters are a daily briefing, a weekly review and a draft-only inbox triage; each saves, and none trips the safety warning', () => {
+// The safety warning reads the cat's tools, not the prompt (plan 9.7; routines.test.ts), so a starter's words no longer decide it.
+test('the starters are a daily briefing, a weekly review and a draft-only inbox triage; each saves', () => {
   assert.deepEqual(TEMPLATES.map(t => t.label), ['Daily briefing', 'Weekly review', 'Inbox triage (draft only)']);
   assert.match(TEMPLATES[2].prompt, /draft only/);
   for (const t of TEMPLATES) {
     const draft = routineDraft({title: t.title, prompt: t.prompt, when: t.when, timezone: 'UTC'});
     assert.ok(draft.body, t.id);
     assert.ok(nextRunAt(draft.body.schedule), `${t.id} runs`);
-    assert.equal(routineWarning(t.prompt), null, `${t.id} reads, reports or drafts, and sends nothing`);
   }
   assert.equal(TEMPLATES[1].when.kind, 'weekly');
 });
@@ -145,7 +145,7 @@ class FakeNode {
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
 }
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
-async function withPanel(routines, fn, {status = {}, saved = null} = {}) {
+async function withPanel(routines, fn, {status = {}, saved = null, threads = {}} = {}) {
   const saved_ = globalThis.document, doc = {activeElement: null};
   doc.createElement = tag => new FakeNode(tag, doc);
   doc.createTextNode = text => Object.assign(new FakeNode('#text', doc), {ownText: String(text)});
@@ -155,17 +155,19 @@ async function withPanel(routines, fn, {status = {}, saved = null} = {}) {
   const fetchImpl = async (url, init = {}) => {
     calls.push([init.method ?? 'GET', url, init.body ? JSON.parse(init.body) : undefined]);
     const code = status[url] ?? 200;
+    const thread = /^\/api\/threads\/([^?]+)\?limit=1$/.exec(url)?.[1];
     const body = url === '/api/routines' && !init.method ? {routines, timezone: 'Europe/London'}
+      : thread ? {messages: [], more: false, tasks: threads[decodeURIComponent(thread)] ?? []}
       : url === '/api/remote/status' ? {origin: null}
         : url.endsWith('/hook') ? {token: 'tok', path: '/hooks/routines/r1/tok'}
           : code === 200 ? (saved ?? {ok: true}) : {error: 'Refused.'};
     return {ok: code < 400, status: code, json: async () => body};
   };
-  const opened = [];
-  const panel = createRoutinesPanel({doc, win: {addEventListener() {}, location: {origin: 'http://127.0.0.1:8787'}, navigator: {}}, fetchImpl,
+  const opened = [], win = {addEventListener() {}, location: {origin: 'http://127.0.0.1:8787', hash: ''}, navigator: {}};
+  const panel = createRoutinesPanel({doc, win, fetchImpl,
     town: () => ({cats: [{id: 'mayor', name: 'Mayor'}, {id: 'scribe', name: 'Scribe'}], models: [{id: 'demo', label: 'Demonstration'}, {id: 'local', label: 'Local'}], townDefault: {usable: true, provider: 'local'}}),
     onOpenChat: id => opened.push(id), ask: async opts => { asked.push(opts.title); return true; }});
-  try { await panel.open(); await settle(); return await fn({panel, dialog: panel.dialog, calls, asked, opened}); } finally {
+  try { await panel.open(); await settle(); return await fn({panel, dialog: panel.dialog, calls, asked, opened, win}); } finally {
     if (saved_ === undefined) delete globalThis.document; else globalThis.document = saved_;
   }
 }
@@ -263,12 +265,87 @@ test('Edit keeps a custom schedule as typed, and a bad field never posts', () =>
   assert.deepEqual(calls.find(c => c[0] === 'POST')[2].schedule, {cron: '*/30 9-17 * * 1-5', timezone: 'Europe/London'});
 }));
 
-test('app.js opens Routines from ☰ and from openSurface, and the menu lists it after the Mayor’s autonomy', () => {
+// Plan 11.14 (F8): a card says whether its last run worked, from the run task's status (11.3), and lists the last runs.
+const NOON = Date.parse('2026-11-09T12:00:00Z');
+const run = (task, status, hoursAgo, trigger = 'schedule') => ({task, at: new Date(NOON - hoursAgo * 3_600_000).toISOString(), trigger, status});
+
+test('Last run: done with Open, failed or interrupted with its reason and Retry, in-flight says when it started', () => {
+  const now = NOON;
+  assert.deepEqual(lastRun({runs: [run('t2', 'done', 2), run('t1', 'failed', 26)]}, {now}), {text: 'Done 2 h ago', action: 'open', task: 't2'});
+  assert.deepEqual(lastRun({runs: [run('t1', 'failed', 2)]}, {now, reason: 'Claude plan call timed out'}), {text: 'Failed · Claude plan call timed out', action: 'retry', task: 't1'});
+  assert.deepEqual(lastRun({runs: [run('t1', 'interrupted', 2)]}, {now}), {text: 'Interrupted', action: 'retry', task: 't1'}, 'no reason read yet: the word alone');
+  assert.equal(lastRun({runs: [run('t3', 'running', 0.1)]}, {now}).text, 'Running, started 6 min ago');
+  assert.equal(lastRun({runs: [run('t3', 'waiting', 1)]}, {now}).text, 'Waiting for you, started 1 h ago');
+  assert.deepEqual(lastRun({runs: [run('t4', 'cancelled', 3)]}, {now}), {text: 'Stopped 3 h ago', action: 'open', task: 't4'});
+  assert.deepEqual(lastRun({runs: [run('gone', null, 3)]}, {now}), {text: '3 h ago', action: null, task: 'gone'}, 'a run with no task in the town has nothing to open');
+  assert.deepEqual(lastRun({runs: []}, {now, fallback: '5 h ago'}), {text: '5 h ago', action: null, task: null}, 'only skipped slots: the time, the note says why');
+  assert.equal(lastRun({}).text, 'Not run yet');
+  assert.equal(runRow(run('t1', 'failed', 26, 'catch-up'), now), 'Failed 26 h ago · run late after a missed time');
+  assert.equal(runRow(run('t2', 'done', 2, 'manual'), now), 'Done 2 h ago · Run now');
+  assert.equal(runRow(run('t2', 'done', 50, 'webhook'), now), 'Done 2 d ago · from its webhook link');
+});
+
+const failing = {...warned, id: 'r1', title: 'Morning digest', warning: null, lastRunAt: run('t1', 'failed', 2).at, runs: [run('t1', 'failed', 2), run('t0', 'done', 26, 'manual')]};
+const working = {...warned, id: 'r2', title: 'Weekly review', warning: null, lastRunAt: run('t2', 'done', 2).at, runs: [run('t2', 'done', 2)]};
+const threads = {t1: [{id: 't1', status: 'failed', result: 'Claude plan call timed out. Try again later.'}, {id: 't1-child', parent: 't1', status: 'failed', result: 'Not this one.'}]};
+
+test('a failed and a done routine each show their Last run line; the reason is the run task’s, read once', () => withPanel([failing, working], async ({panel, dialog, calls}) => {
+  const [bad, good] = dialog.querySelectorAll('li.rt-card');
+  const last = card => card.querySelector('.rt-last');
+  assert.equal(last(bad).querySelector('dt').textContent, 'Last run');
+  assert.equal(last(bad).querySelector('dd').textContent, 'Failed · Claude plan call timed out Retry');
+  assert.equal(last(bad).dataset.run, 'retry');
+  assert.match(last(good).querySelector('dd').textContent, /^Done .+ ago Open$/);
+  assert.equal(last(good).dataset.run, 'open');
+  assert.deepEqual(bad.querySelectorAll('dt').map(n => n.textContent), ['Next run', 'Last run', 'Tokens used'], 'still three facts');
+  const reads = () => calls.filter(c => c[1].startsWith('/api/threads/')).map(c => c[1]);
+  assert.deepEqual(reads(), ['/api/threads/t1?limit=1'], 'only the failed run is read');
+  await panel.refresh(); await settle();
+  assert.deepEqual(reads(), ['/api/threads/t1?limit=1'], 'and only once while the panel is open');
+}, {threads}));
+
+test('Retry is Run now; Open closes the panel and opens the run’s thread', () => withPanel([failing, working], async ({panel, dialog, calls, win, opened}) => {
+  button(dialog.querySelector('li.rt-card'), 'Retry').click();
+  await settle();
+  assert.deepEqual(calls.filter(c => c[0] === 'POST'), [['POST', '/api/routines/r1/run', {}]]);
+  assert.equal(dialog.open, true, 'Retry keeps the panel open');
+  const good = dialog.querySelectorAll('li.rt-card')[1];
+  button(good.querySelector('.rt-last'), 'Open').click();
+  assert.equal(dialog.open, false);
+  assert.equal(win.location.hash, 'thread=t2');
+  assert.deepEqual(opened, [], 'a thread, not the cat’s chat');
+  await panel.open(); await settle();
+}, {threads}));
+
+test('the last runs fold under the card, newest first, each with Open', () => withPanel([failing, {...warned, id: 'r3', runs: []}], async ({dialog, win}) => {
+  const [card, none] = dialog.querySelectorAll('li.rt-card');
+  assert.equal(none.querySelector('details.rt-runs'), null, 'no runs, no list');
+  assert.equal(none.querySelector('.rt-last').querySelector('dd').textContent, 'Not run yet');
+  const box = card.querySelector('details.rt-runs');
+  assert.equal(box.querySelector('summary').textContent, 'Last 2 runs');
+  const rows = box.querySelectorAll('li');
+  assert.deepEqual(rows.map(li => li.dataset.task), ['t1', 't0']);
+  assert.match(rows[0].textContent, /^Failed .+ ago · on schedule Open$/);
+  assert.match(rows[1].textContent, /^Done .+ ago · Run now Open$/);
+  assert.match(rows[1].querySelector('button').getAttribute('aria-label'), /^Open the run: Done .+ · Run now$/);
+  rows[1].querySelector('button').click();
+  assert.equal(win.location.hash, 'thread=t0');
+}, {threads}));
+
+test('Routines live in the Mayor’s corner: its chip, Options > Manage, /routines and openSurface open them, and ☰ no longer lists them', async () => {
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(app, /initRoutinesPanel\(\{town:\(\)=>state,/);
   assert.match(app, /routines:\(\)=>void routinesPanel\.open\(\)/);
-  const menu = readFileSync(new URL('../public/settings-menu.js', import.meta.url), 'utf8');
-  assert.match(menu, /'autonomy', 'routines'/);
+  assert.match(app, /const MANAGED=\{.*\broutines:\(\)=>void routinesPanel\.open\(\)/, 'the chat opens the same panel');
+  const {ROWS} = await import('../public/settings-menu.js');
+  const {KEEPERS} = await import('../public/manage.js');
+  const {COMMAND_PANELS} = await import('../public/chat-composer.js');
+  assert.ok(!ROWS.includes('routines'), 'not a ☰ row');
+  assert.deepEqual(KEEPERS.find(k => k.role === 'mayor').items, ['autonomy', 'routines']);
+  assert.equal(COMMAND_PANELS.routines, 'routines');
+  const panel = readFileSync(new URL('../public/routines-panel.js', import.meta.url), 'utf8');
+  assert.ok(!panel.includes('registerSettingsSection'), 'the panel registers no ☰ section');
+  assert.match(panel, /panel\.ready = panel\.probe\(\)\.catch\(\(\) => false\)/, 'the chat offers it once its probe answers');
 });
 
 // Daily briefing Listen (plan 3.2).

@@ -38,6 +38,28 @@ test('a courier follows lanes, meets the recipient, returns home, and freezes wi
   for(const p of points.slice(1,-1))assert.ok(Math.hypot(p[0]-cats[1].home.x,p[1]-cats[1].home.z)>=resolved.house_radius+resolved.road_clearance-.05,'roads keep a neighbouring house clear');
 });
 
+test('replaying visits keeps a live visit that was queued but not started, after the replayed ones',()=>{
+  const visits=new MessageVisits();visits.ingest([],cats);visits.ingest([message('live','mayor','banker')],cats);
+  visits.replay([message('r1','scholar','mayor'),message('r2','banker','scholar')],cats);
+  assert.deepEqual(visits.queue.map(m=>m.id),['r1','r2','live']);
+  // A message both replayed and already queued is queued once, in its replay place.
+  const again=new MessageVisits();again.ingest([],cats);again.ingest([message('live','mayor','banker')],cats);
+  again.replay([message('live','mayor','banker'),message('r1','scholar','mayor')],cats);
+  assert.deepEqual(again.queue.map(m=>m.id),['live','r1']);
+  // Opening a second row replaces the first row's unwalked replay; the live visit still waits after it.
+  const rows=new MessageVisits();rows.ingest([],cats);rows.ingest([message('live','mayor','banker')],cats);
+  rows.replay([message('a1','scholar','mayor'),message('a2','banker','scholar')],cats);rows.replay([message('b1','mayor','scholar')],cats);
+  assert.deepEqual(rows.queue.map(m=>m.id),['b1','live']);
+});
+
+test('a walker keeps full pace on the straight and slows a little into a tight bend',()=>{
+  const corner=makePath([[0,0],[5,0],[5,.4],[5,5]]),bend=Math.min(...[4.6,4.8,5,5.2].map(d=>corner.pace(d)));
+  assert.equal(corner.pace(1),1);assert.equal(corner.pace(8.5),1);assert.ok(bend<1&&bend>=.8,`pace in the bend ${bend}`);
+  // Walking back (dir -1) eases in before the bend on the way home: the same pace as walking the reversed path out.
+  const back=makePath([[5,5],[5,.4],[5,0],[0,0]]);
+  for(let d=.5;d<corner.length;d+=.25)assert.ok(Math.abs(corner.pace(d,-1)-back.pace(corner.length-d))<1e-9,`return pace at ${d}`);
+});
+
 test('cancelled tasks turn couriers home and remove queued work without replaying it',()=>{
   const visits=new MessageVisits();visits.ingest([],cats);visits.ingest([message('a','mayor','scholar'),message('b','scholar','mayor')],cats);
   const v=visits.start(cats,layout);visits.advance(.5,opts);const point={...v.position};
@@ -114,7 +136,8 @@ test('a courier whose recipient leaves walks home along its lane, then sleeps at
     if(visit)assert.equal(r.amount,0,'never sleeps on the road');
   }
   assert.equal(r.state,'sleeping');assert.ok(homeAt!==null&&t-homeAt>=settings.sleepAfterSeconds);
-  assert.ok(Math.hypot(last.x-lane[0][0],last.z-lane[0][1])<.2,'last step of the walk ends at its own stand point');
+  // The last position seen is one 0.05 s step (at most speed x 0.05 m) short of the stand point.
+  assert.ok(Math.hypot(last.x-lane[0][0],last.z-lane[0][1])<=opts.speed*.05+1e-6,'last step of the walk ends at its own stand point');
 });
 
 test('a queued visit waits until its sleeping sender has woken, so the walk never starts from the lying pose',()=>{

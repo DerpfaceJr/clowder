@@ -46,6 +46,16 @@ test('a torn last line is moved to events.jsonl.torn-<time>, the journal is cut 
   });
 });
 
+test('a journal of zeros with no whole line is refused and left as it is, never cut back to an empty town', () => {
+  withCopy((file, dir) => {
+    const zeros = Buffer.alloc(4096);
+    writeFileSync(file, zeros);
+    assert.throws(() => new Store(file, []), /holds no readable events.*Restore a backup/);
+    assert.deepEqual(readFileSync(file), zeros, 'the file is untouched');
+    assert.deepEqual(readdirSync(dir).filter(f => f.includes('.torn-')), [], 'nothing was moved aside');
+  });
+});
+
 test('a last line that parses but lost its newline is kept and applied, and gets its newline back', () => {
   withCopy((file, dir) => {
     appendFileSync(file, JSON.stringify({id: 'last', at: '2026-01-01T00:00:00.000Z', type: 'paused', data: {value: true}}));

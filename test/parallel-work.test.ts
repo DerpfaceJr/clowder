@@ -7,6 +7,7 @@ import {allRoles} from '../src/roles.ts';
 import {Store} from '../src/store.ts';
 import {Town} from '../src/engine.ts';
 import type {Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const config=(slots:number)=>({...base,maxParallelWork:slots,goals:{roundPauseSeconds:0.02,maxRoundsPerDay:null,tokenBudget:null}});
@@ -14,7 +15,7 @@ const fixture=(slots:number,provider:Provider)=>{
   const cfg=config(slots),store=new Store(join(mkdtempSync(join(tmpdir(),'parallel-')),'events.jsonl'),allRoles(cfg));
   return {store,town:new Town(store,cfg,{test:provider})};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,5));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(5);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 const gate=()=>{let open!:()=>void;const wait=new Promise<void>(r=>open=r);return {wait,open};};

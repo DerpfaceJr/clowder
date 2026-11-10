@@ -164,6 +164,9 @@ export function memorialSpot(L){
 /** The notice board's size in metres (unscaled, like all plaza furniture): half its width and depth with the roof, its
  *  ridge and the middle of its face. world-art.js draws to it; town.js sizes the pick, the Archive shot and the label. */
 export const BOARD={half:1.3,depth:.5,top:3.2,face:1.9};
+/** A house's front-garden fence runs in house-local metres before scale (world-art.js draws it; walking routes keep off
+ *  it), and the radius of the house itself, which stays inside its door and the cat's stand point. */
+export const GARDEN_FENCE=[[[-2.45,.95],[-2.45,2.15],[-2.1,2.5],[-.85,2.55]],[[2.45,.95],[2.45,2.1]]],HOUSE_BODY=2;
 /** The Mayor's square fountain: basin radius in metres (world-art.js draws to it). */
 export const FOUNTAIN={r:2.4};
 /** Circular plaza features: lamp, bench and notice board, and a fountain in the middle of the Mayor's square. Kept inside
@@ -300,6 +303,103 @@ function meander(pts,seed,circles,max=7){
   return pts;
 }
 
+// ---------------------------------------------------------------- natural walking routes
+// A joined route (stand point, door, stem, streets, ...) has a corner wherever two pieces meet: T-junctions, doorsteps and
+// plaza links. smoothPath rounds each corner with a circular fillet (a cubic that matches the route's direction at both
+// ends of the bend), about CORNER metres in radius where the paving allows, and never moves the two end points.
+const CORNER=1.4,MIN_TURN=.07,HOOK=1.75,BEND_STEP=.25,BEND_ANGLE=.14;
+const toSegment=(p,a,b)=>{const dx=b[0]-a[0],dz=b[1]-a[1],d=dx*dx+dz*dz,t=d?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dz)/d)):0;return Math.hypot(p[0]-a[0]-dx*t,p[1]-a[1]-dz*t);};
+const turnAt=(p,i)=>{const a=Math.atan2(p[i][1]-p[i-1][1],p[i][0]-p[i-1][0]),b=Math.atan2(p[i+1][1]-p[i][1],p[i+1][0]-p[i][0]);return Math.atan2(Math.sin(b-a),Math.cos(b-a));};
+/**
+ * Rounds the corners of a walking route. points: [[x,z]...], first and last kept exactly.
+ * room(p): how far (m) the route may leave its line at p and stay on the paving (a road's half width, more on a plaza).
+ * obstacles: [{x,z,r}] the route must keep r off; a bend never comes nearer one than the route already did.
+ * First a hook (the route doubling back over less than its own room, as where a stem overshoots onto the street it
+ * joins) is cut; then every turn over MIN_TURN gets a fillet, sharpest first, each in its own stretch of route.
+ */
+export function smoothPath(points,room=()=>.5,obstacles=[]){
+  const p=points.filter((q,i)=>!i||Math.hypot(q[0]-points[i-1][0],q[1]-points[i-1][1])>1e-6);
+  // New points may not come nearer an obstacle than its clearance, or than the old points already came.
+  const keeps=(fresh,old)=>obstacles.every(o=>{const was=Math.min(...old.map(q=>Math.hypot(q[0]-o.x,q[1]-o.z)));return was>o.r+8||fresh.every(q=>Math.hypot(q[0]-o.x,q[1]-o.z)>=Math.min(o.r,was)-1e-6);});
+  const line=(a,b)=>{const n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/BEND_STEP));return Array.from({length:n+1},(_,j)=>[a[0]+(b[0]-a[0])*j/n,a[1]+(b[1]-a[1])*j/n]);};
+  for(let i=1;i<p.length-1;i++)if(Math.abs(turnAt(p,i))>HOOK&&toSegment(p[i],p[i-1],p[i+1])<=room(p[i])+.25&&keeps(line(p[i-1],p[i+1]),[p[i-1],p[i],p[i+1]])){p.splice(i,1);i=Math.max(0,i-2);}
+  if(p.length<3)return p;
+  const s=[0];for(let i=1;i<p.length;i++)s.push(s[i-1]+Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]));
+  const total=s.at(-1);
+  // Point and unit direction at arc length d.
+  const at=d=>{let lo=0,hi=p.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(s[m]<=d)lo=m;else hi=m;}
+    const a=p[lo],b=p[hi],len=s[hi]-s[lo]||1,t=Math.max(0,Math.min(1,(d-s[lo])/len));return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,(b[0]-a[0])/len,(b[1]-a[1])/len];};
+  const turnOver=(a,b)=>{const A=at(a),B=at(b);return Math.acos(Math.max(-1,Math.min(1,A[2]*B[2]+A[3]*B[3])));};
+  // The stretch each corner wants: a fillet of radius r leaves both legs' lines by at most r(1-cos(t/2)) (at its
+  // middle), so r keeps that within the room, measured just inside the corner (a street's corner into a plaza has the
+  // paving to bend into). Corners close together turn as one, so the stretch is sized for the turn it spans.
+  const spans=[];
+  for(let i=1;i<p.length-1;i++){
+    const t=Math.abs(turnAt(p,i));if(t<=MIN_TURN)continue;
+    const d=s[i],ia=p[i-1],ib=p[i+1],ux=(p[i][0]-ia[0])/(s[i]-s[i-1]),uz=(p[i][1]-ia[1])/(s[i]-s[i-1]),vx=(ib[0]-p[i][0])/(s[i+1]-s[i]),vz=(ib[1]-p[i][1])/(s[i+1]-s[i]);
+    const wx=vx-ux,wz=vz-uz,wl=Math.hypot(wx,wz)||1,space=room([p[i][0]+wx/wl*.6,p[i][1]+wz/wl*.6]);
+    const reach=turn=>Math.min(CORNER,space/Math.max(1e-6,1-Math.cos(Math.min(turn,3)/2)))*Math.tan(Math.min(turn,3)/2);
+    let h=Math.min(reach(t),d,total-d);
+    for(let k=0;k<3;k++){const want=Math.min(reach(turnOver(d-h,d+h)),d,total-d);if(want<=h*1.05)break;h=want;}
+    spans.push({a:d-h,b:d+h,d,t});
+  }
+  // Overlapping stretches become one bend.
+  const merged=[];for(const w of spans){const last=merged.at(-1);if(last&&w.a<last.b){last.b=Math.max(last.b,w.b);last.parts.push(w);}else merged.push({a:w.a,b:w.b,parts:[w]});}
+  // One bend: a cubic from the route's point and direction at a to those at b, its handles from where the two
+  // tangent lines meet, so a bend over corners of unequal legs stays round. Null when it would near an obstacle.
+  const bend=(a,b)=>{
+    const A=at(a),B=at(b),phi=turnOver(a,b),h=(b-a)/2,n=Math.max(2,Math.ceil(2*h/BEND_STEP),Math.ceil(phi/BEND_ANGLE));
+    const den=A[2]*B[3]-A[3]*B[2],tA=den?((B[0]-A[0])*B[3]-(B[1]-A[1])*B[2])/den:-1,tB=den?((B[1]-A[1])*A[2]-(B[0]-A[0])*A[3])/den:-1;
+    // Without a sensible meeting point, the handles of a circular arc on the chord from a to b.
+    const k43=phi<1e-3?2/3:4/3*Math.tan(phi/4)/Math.tan(phi/2),chord=Math.hypot(B[0]-A[0],B[1]-A[1]),arc=phi<1e-3?chord/3:4/3*Math.tan(phi/4)*chord/(2*Math.sin(phi/2));
+    const [hA,hB]=tA>h/3&&tB>h/3&&tA<3*h&&tB<3*h?[tA*k43,tB*k43]:[arc,arc];
+    const c=[A[0]+A[2]*hA,A[1]+A[3]*hA],e=[B[0]-B[2]*hB,B[1]-B[3]*hB],curve=[];
+    for(let j=0;j<=n;j++){const u=j/n,v=1-u;curve.push([v*v*v*A[0]+3*v*v*u*c[0]+3*v*u*u*e[0]+u*u*u*B[0],v*v*v*A[1]+3*v*v*u*c[1]+3*v*u*u*e[1]+u*u*u*B[1]]);}
+    return keeps(curve,[A,B,...p.filter((q,j)=>s[j]>a&&s[j]<b)])?curve:null;
+  };
+  // A bend that would near an obstacle splits into its corners' own bends, each tightening about its corner up to
+  // three times, else that corner stays as it is.
+  const windows=[];
+  for(const w of merged){
+    const whole=bend(w.a,w.b);if(whole){windows.push({a:w.a,b:w.b,curve:whole});continue;}
+    let floor=w.a;
+    for(const [j,c] of w.parts.entries()){
+      const ceil=j+1<w.parts.length?Math.min(w.b,(c.d+w.parts[j+1].d)/2):w.b;
+      for(let f=1,k=0;k<4;k++,f/=2){
+        const a=Math.max(floor,c.d-(c.d-c.a)*f),b=Math.min(ceil,c.d+(c.b-c.d)*f);if(b-a<.08)break;
+        const curve=bend(a,b);if(curve){windows.push({a,b,curve});floor=b;break;}
+      }
+    }
+  }
+  const out=[p[0]];let w=0;
+  for(let i=1;i<p.length;i++){
+    while(w<windows.length&&windows[w].b<=s[i]+1e-9){const win=windows[w++];for(const q of win.curve)out.push(q);}
+    if(!windows.some(win=>s[i]>win.a-1e-9&&s[i]<win.b+1e-9))out.push(p[i]);
+  }
+  while(w<windows.length)for(const q of windows[w++].curve)out.push(q);
+  out[out.length-1]=p.at(-1);
+  return out.filter((q,i)=>!i||Math.hypot(q[0]-out[i-1][0],q[1]-out[i-1][1])>1e-6);
+}
+
+/** A plaza crossing: from ring end a round the hall's side of the centre to ring end b, on an arc of radius rc about
+ *  the site (between the fountain's rim and the plaza edge), meeting the ring along its own direction at both ends.
+ *  A hall link is the same curve from the hall's door (which faces the centre) out to one ring end. */
+const ease=u=>{const v=Math.max(0,Math.min(1,u));return v*v*(3-2*v);};
+function plazaArc(site,from,to,rc,{door=false,spread=.3}={}){
+  const pol=q=>[Math.hypot(q[0]-site.x,q[1]-site.z),Math.atan2(q[1]-site.z,q[0]-site.x)];
+  const [r0,t0]=pol(from),[r1,t1]=pol(to),span=Math.atan2(Math.sin(t1-t0),Math.cos(t1-t0));
+  // A door link spans half a crossing, so its outer blend takes twice the share to match the crossing's shape.
+  const out=door?spread*2:spread,n=Math.max(8,Math.ceil(Math.abs(span)*Math.max(r0,r1)/.4)),pts=[];
+  for(let j=0;j<=n;j++){
+    const u=j/n,r=rc+(r0-rc)*(door?Math.max(0,1-u/spread)**2:ease(1-u/spread))+(r1-rc)*ease(1-(1-u)/out),a=t0+span*u;
+    pts.push(j===0?from:j===n?to:[site.x+r*Math.cos(a),site.z+r*Math.sin(a)]);
+  }
+  return pts;
+}
+/** Radius of a plaza's crossing arc: halfway between the hall's door and the fountain's rim (or, on a nook's plaza
+ *  without one, 30% of the plaza out from its middle). */
+const crossRadius=(site,door,L)=>(Math.hypot(door[0]-site.x,door[1]-site.z)+(site.index===0?FOUNTAIN.r+1.2:plazaOf(site,L)*.3))/2;
+
 const same=(a,b)=>a[0]===b[0]&&a[1]===b[1];
 function joinPaths(...parts){
   const out=[];for(const part of parts)for(const p of part){if(!out.length||!same(out.at(-1),p))out.push(p);}
@@ -421,7 +521,11 @@ export function townLayout(cats,groups,raw){
         const a=Math.atan2(c.home.z-g.site.z,c.home.x-g.site.x),R=ringOf(g);
         ends=[a+1.22,a-1.22].map(t=>splitAt(edges,nearestOn(rings(),[g.site.x+Math.cos(t)*R,g.site.z+Math.sin(t)*R]),snap));
       }
-      for(const end of ends)edges.push({kind:'plaza',group:g.id,cat:c.id,points:[d,end],width:0});
+      // Each link curves from the door round the near side of the centre to its ring end; a third link joins the two
+      // ends on that same arc, so a cat crossing the plaza passes between the fountain and the hall, not over the doorstep.
+      const rc=crossRadius(g.site,d,L);
+      for(const end of ends)edges.push({kind:'plaza',group:g.id,cat:c.id,points:plazaArc(g.site,d,end,rc,{door:true}),width:0});
+      edges.push({kind:'plaza',group:g.id,points:plazaArc(g.site,ends[0],ends[1],rc),width:0});
       continue;
     }
     // A stem: from the door, out past the garden, to the nearest point of any street (T-junction).
@@ -442,7 +546,8 @@ export function townLayout(cats,groups,raw){
   // Walking graph over every edge, nodes at edge ends.
   const graph=new Map(),link=(a,b,e,forward)=>{if(!graph.has(a))graph.set(a,[]);graph.get(a).push({to:b,e,forward});};
   const lengthOf=pts=>pts.slice(1).reduce((s,p,i)=>s+Math.hypot(p[0]-pts[i][0],p[1]-pts[i][1]),0);
-  for(const e of edges.filter(e=>!e.pending)){e.length=lengthOf(e.points);const a=keyOf(e.points[0]),b=keyOf(e.points.at(-1));link(a,b,e,true);link(b,a,e,false);}
+  // A hall's door links cost 2 m extra, so a route passes a hall's doorstep only to visit it: crossings take the arc.
+  for(const e of edges.filter(e=>!e.pending)){e.length=lengthOf(e.points)+(e.kind==='plaza'&&e.cat?2:0);const a=keyOf(e.points[0]),b=keyOf(e.points.at(-1));link(a,b,e,true);link(b,a,e,false);}
   function route(from,to){
     const dist=new Map([[from,0]]),prev=new Map(),open=new Set([from]);
     while(open.size){
@@ -453,12 +558,27 @@ export function townLayout(cats,groups,raw){
     const parts=[];for(let k=to;k!==from;){const p=prev.get(k);parts.unshift(p.forward?p.e.points:p.e.points.slice().reverse());k=p.u;}
     return parts;
   }
-  /** Walking path from one cat's stand point to another's, along the physical roads. */
-  function visitPath(a,b){
+  /** The route as the road graph has it: stand point, door, road pieces, door, stand point, corners and all. */
+  function roadPath(a,b){
     const da=door.get(a.id),db=door.get(b.id),sa=standPoint(a.home,yaw.get(a.id)||0,L),sb=standPoint(b.home,yaw.get(b.id)||0,L);
     const parts=da&&db&&route(keyOf(da),keyOf(db));
     return parts?joinPaths([sa,da],...parts,[db,sb]):[sa,sb];
   }
+  // What a smoothed route keeps off: every other home, the fountain and the notice boards' corners. Its room: a road's
+  // half width, more on a plaza or a hall's yard.
+  const features=groups.flatMap(g=>plazaFeatures(g.site,L).flatMap(f=>f.kind==='fountain'?[{x:f.x,z:f.z,r:FOUNTAIN.r+.45}]:f.kind==='board'?[-1,0,1].flatMap(i=>[-1,1].map(j=>({x:f.x+i*BOARD.half*Math.cos(f.yaw)+j*BOARD.depth*Math.sin(f.yaw),z:f.z-i*BOARD.half*Math.sin(f.yaw)+j*BOARD.depth*Math.cos(f.yaw),r:.65}))):[]));
+  const hallYards=groups.map(g=>({...hallSpot(g.site,L),r:L.house_radius+L.road_clearance}));
+  const paving=(p,inset=0)=>groups.some(g=>Math.hypot(p[0]-g.site.x,p[1]-g.site.z)<commonAt(g)-inset)||hallYards.some(y=>Math.hypot(p[0]-y.x,p[1]-y.z)<y.r-inset);
+  const room=p=>paving(p,.3)?2.5:.5;
+  // A route's own two homes: their house and the posts of their garden fence, every 0.3 m (the doorstep is theirs).
+  const ownHome=c=>{
+    const y=yaw.get(c.id)||0,cs=Math.cos(y),sn=Math.sin(y),local=(x,z)=>({x:c.home.x+(x*cs+z*sn)*L.scale,z:c.home.z+(-x*sn+z*cs)*L.scale,r:.3});
+    const posts=GARDEN_FENCE.flatMap(run=>run.slice(1).flatMap((b,i)=>{const a=run[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/.3);return Array.from({length:n+1},(_,j)=>local(a[0]+(b[0]-a[0])*j/n,a[1]+(b[1]-a[1])*j/n));}));
+    return [{x:c.home.x,z:c.home.z,r:HOUSE_BODY*L.scale},...posts];
+  };
+  const keepOff=(...ends)=>[...features,...homes.flatMap(c=>ends.includes(c.id)?ownHome(c):[{x:c.home.x,z:c.home.z,r:L.house_radius+L.road_clearance}])];
+  /** Walking path from one cat's stand point to another's, along the physical roads, with every corner rounded. */
+  const visitPath=(a,b)=>a.id===b.id?roadPath(a,b):smoothPath(roadPath(a,b),room,keepOff(a.id,b.id));
   const roads=edges.filter(e=>e.kind!=='plaza'&&!e.pending),reserved=edges.filter(e=>e.pending);
   // Junctions: every point where road ends meet (T-junctions and split streets). Drawn as paved caps over the seams.
   const degree=new Map();for(const e of roads)for(const p of [e.points[0],e.points.at(-1)]){const k=keyOf(p);if(!degree.has(k))degree.set(k,{p,n:0,w:0,kinds:new Set()});const j=degree.get(k);j.n++;j.w=Math.max(j.w,e.width);j.kinds.add(e.kind);}
@@ -483,9 +603,11 @@ export function townLayout(cats,groups,raw){
   for(const c of homes){const d=door.get(c.id);if(!d)continue;const y=yaw.get(c.id);lampAt([d[0]+Math.cos(y)*1.2,d[1]-Math.sin(y)*1.2]);}
   // Hall yards are paved discs around each hall, reaching just past the hall footprint.
   const yards=groups.map(g=>({...hallSpot(g.site,L),r:L.house_radius+L.road_clearance}));
-  return {L,yaw,roads,reserved,junctions,visitPath,circles,lamps,yards,common,sites:groups.map(g=>({...g.site,group:g.id,plaza:plazaOf(g.site,L),common:commonAt(g),features:plazaFeatures(g.site,L)})),memorial,
+  return {L,yaw,roads,reserved,junctions,visitPath,roadPath,circles,
+    /** On the paving: a plaza's common, a hall's yard, or within a road's half width of its line. */
+    paved:(x,z)=>paving([x,z])||roadGap({x,z},roads)<=0,lamps,yards,common,sites:groups.map(g=>({...g.site,group:g.id,plaza:plazaOf(g.site,L),common:commonAt(g),features:plazaFeatures(g.site,L)})),memorial,
     /** Walking route from a cat's door to the memorial door along the roads, or null when there is none. */
-    memorialPath:c=>{const parts=memorialRoad&&door.has(c.id)&&route(keyOf(door.get(c.id)),keyOf(memorial.door));return parts?joinPaths(...parts):null;},
+    memorialPath:c=>{const parts=memorialRoad&&door.has(c.id)&&route(keyOf(door.get(c.id)),keyOf(memorial.door));return parts?smoothPath(joinPaths(...parts),room,keepOff(c.id)):null;},
     frontOf:id=>yaw.get(id)};
 }
 

@@ -21,12 +21,15 @@ import {dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 import type {FastifyInstance,FastifyReply,FastifyRequest} from 'fastify';
 import {same} from './access.ts';
 import {writeJsonAtomic} from './atomic-json.ts';
+import {healthOf,type Health} from './health.ts';
 import {CONFIG,DIRS,isJournal} from './snapshot.ts';
 import {SECRETS_FILE,SECRET_FIELDS,storeFor,withSecrets,withoutSecrets} from './secret-store.ts';
 
 const FORMAT=1,HEADER='clowder-backup.json',BLOBS='blobs',KEEP=3;
 // ponytail: a journal that grows every hour gains a blob per run; past this many it is copied whole once, so a manifest stays small.
 const MAX_PARTS=256;
+// Every blob the newest point names is opened and checked once in this many runs (runBackup). 24: a day at one run an hour (ASSUMED).
+const CHECK_RUNS=24;
 const MAGIC=Buffer.from('CLB1'),OVERHEAD=MAGIC.length+12+16; // magic, nonce, tag
 const MANIFEST=/^manifest-(\d{6,})\.enc$/,BLOB=/^[0-9a-f]{16}\.bin$/,TMP=/\.tmp-[0-9a-f]{8}$/;
 const manifestName=(n:number)=>`manifest-${String(n).padStart(6,'0')}.enc`;
@@ -180,9 +183,15 @@ export async function runBackup(opts:{dataDir:string;folder:string;recoveryKey:s
   let prev:Manifest|null=null;
   for(const n of numbers){try{prev=v.manifest(n);break;}catch{/* the one before */}}
   const sizes=new Map(readdirSync(join(folder,BLOBS)).filter(f=>BLOB.test(f)).map(f=>[f,statSync(join(folder,BLOBS,f)).size]));
-  // ponytail: a blob a kept point names is trusted by its size, not decrypted, so a sync client's placeholders are never downloaded each hour.
-  // A changed byte is still caught: restore checks every blob's tag and hash.
-  const intact=(p:Part)=>sizes.get(p.blob)===p.size+OVERHEAD;
+  // A blob a kept point names is trusted by its size, so a sync client's placeholders are not all downloaded each hour. Size cannot show a
+  // changed byte, and one damaged part of the main journal sits in every kept point: the status would say backed up until a restore failed.
+  // So each run also opens a share of the base point's blobs in turn (tag, size and hash, as restore checks them), all of them within
+  // CHECK_RUNS runs. One that does not open is not intact, and its file is written whole again below.
+  // ponytail: a blob damaged after its turn waits up to CHECK_RUNS runs (a day at one run an hour); check every blob each run if that is too long.
+  const held=[...(prev?.files??[]).flatMap(f=>f.parts),...(prev?.secrets?[prev.secrets]:[])],bad=new Set<string>();
+  const share=Math.ceil(held.length/CHECK_RUNS),turn=numbers[0]??0;
+  for(let i=0;i<share;i++){const p=held[(turn*share+i)%held.length]!;try{v.blob(p.blob,p);}catch{bad.add(p.blob);}}
+  const intact=(p:Part)=>!bad.has(p.blob)&&sizes.get(p.blob)===p.size+OVERHEAD;
   const written:RunResult['written']=[];let reused=0,bytes=0;
   const newPart=async(path:string,from:number,data:Buffer):Promise<Part>=>{
     const blob=`${randomBytes(8).toString('hex')}.bin`;
@@ -258,7 +267,7 @@ export function restoreBackup(folder:string,recoveryKey:string,target:string,opt
   const tmp=`${resolve(target)}.restore-${randomBytes(4).toString('hex')}`;
   try{
     mkdirSync(tmp,{recursive:true});
-    for(const [path,data] of out){const file=join(tmp,...path.split('/'));mkdirSync(dirname(file),{recursive:true});writeFileSync(file,data);}
+    for(const [path,data] of out){const file=join(tmp,...path.split('/'));mkdirSync(dirname(file),{recursive:true});writeFileSync(file,data,{flush:true});}
     if(existsSync(target))rmdirSync(target);
     renameSync(tmp,target);
   }catch(error){rmSync(tmp,{recursive:true,force:true});throw error;}
@@ -267,7 +276,7 @@ export function restoreBackup(folder:string,recoveryKey:string,target:string,opt
 
 // ---- The owner's settings: backup.json holds the folder and the run results; its recoveryKey field lives in the SecretStore.
 type Run={at:string;ok:boolean;error:string|null;n:number|null;bytes:number};
-type Saved={folder?:string;enabled?:boolean;confirmed?:boolean;recoveryKey?:string;lastRun?:Run;lastGood?:{at:string;n:number}};
+type Saved={folder?:string;enabled?:boolean;confirmed?:boolean;recoveryKey?:string;lastRun?:Run;lastGood?:{at:string;n:number};failingSince?:string};
 export const SCHEDULE='Every hour at :17, when no task or season is running';
 export class Backups{
   running=false;
@@ -276,6 +285,11 @@ export class Backups{
   private read():Saved{let raw:Saved={};try{raw=JSON.parse(readFileSync(this.file,'utf8'));}catch{/* not set up */}return withSecrets(this.file,raw);}
   // A store that is not in use (locked, or legacy after a failed move) would hand the key back to be written as is: it is left out instead.
   private save(s:Saved){const {recoveryKey,...rest}=s;writeJsonAtomic(this.file,storeFor(this.dataDir).active?withoutSecrets(this.file,s):rest);}
+  /** The integration contract (health.ts): off until backups are on, a folder is set and the key is confirmed. */
+  health():Health{
+    const s=this.read(),failed=s.lastRun?.ok===false;
+    return healthOf(s.enabled===true&&!!s.folder&&s.confirmed===true,failed?s.lastRun!.error:null,failed&&s.failingSince?Date.parse(s.failingSince):null);
+  }
   /** What the settings show. Never the key. */
   status(){
     const s=this.read();
@@ -331,10 +345,11 @@ export class Backups{
     try{
       if(!s.recoveryKey)throw err('The recovery key cannot be read: saved keys are locked. Open Clowder from the desktop app.',409);
       const r=await runBackup({dataDir:this.dataDir,folder:s.folder,recoveryKey:s.recoveryKey,secrets:secretsOf(this.dataDir),now:this.now});
-      this.record({lastRun:{at:r.at,ok:true,error:null,n:r.n,bytes:r.bytes},lastGood:{at:r.at,n:r.n}});
+      this.record({lastRun:{at:r.at,ok:true,error:null,n:r.n,bytes:r.bytes},lastGood:{at:r.at,n:r.n},failingSince:undefined});
       return r;
     }catch(error){
-      this.record({lastRun:{at,ok:false,error:(error as Error).message,n:null,bytes:0}});
+      // failingSince: the first failed run after the last good one (11.21), so the owner hears of it once it has lasted.
+      this.record({lastRun:{at,ok:false,error:(error as Error).message,n:null,bytes:0},failingSince:s.failingSince??at});
       throw error;
     }finally{this.running=false;}
   }

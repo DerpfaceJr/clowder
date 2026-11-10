@@ -1,14 +1,35 @@
 // A rebuildable SQLite read model beside a world's journal (product plan 2.4). The journal stays the source of truth:
 // this file only holds a snapshot of the replayed state (so a restart replays just the newer events), rows for paging
-// (messages by chat, tasks by cat), FTS5 search over messages and memory notes, and FTS5 over wiki pages (wiki.ts). Deleting it rebuilds it from the journal.
-import {existsSync, rmSync} from 'node:fs';
-import {dirname} from 'node:path';
+// (messages by chat, tasks by cat), FTS5 search over messages, memory notes, artifacts and root request results, and FTS5 over wiki pages (wiki.ts). Deleting it rebuilds it from the journal.
+import {closeSync, existsSync, openSync, readSync, rmSync} from 'node:fs';
+import {basename, dirname, join} from 'node:path';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import type {State, Task} from './store.ts';
+import {artifactIndex, artifactsDir} from './artifacts.ts';
 
-// Bump when the tables change; a db at another version is dropped and rebuilt.
-const SCHEMA = 2;
+// Bump when the tables change; a db at another version is dropped and rebuilt from the journal on the next start.
+// 3: artifacts and request results join the search table, which gains a title column.
+const SCHEMA = 3;
+// What the search table keeps of an artifact's text and of a request's result: enough to show and to match, not the whole file.
+const EXCERPT = 2000, RESULT = 4000, READ_BYTES = 8192;
+export type SearchHit = {kind:'message'|'note'|'artifact'|'request'; ref:string; cat:string; at:string; title:string; text:string};
+/** The start of a saved text artifact, tags stripped for HTML and SVG. Image and video files have no text; an unreadable file has none either. */
+function artifactExcerpt(path:string, kind:string) {
+  if (kind === 'image' || kind === 'video') return '';
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const buf = Buffer.alloc(READ_BYTES), n = readSync(fd, buf, 0, READ_BYTES, 0);
+    let text = buf.subarray(0, n).toString('utf8');
+    if (kind === 'html' || kind === 'svg') text = text.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>|<[^>]*>/g, ' ');
+    return text.replace(/\s+/g, ' ').trim().slice(0, EXCERPT);
+  } catch {
+    return '';
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 // The full-state snapshot is ~6.5 MB of JSON on the owner's world, so it is rewritten every this many events, not every tick.
 export const SNAPSHOT_EVERY = 1000;
 const sqlite = () => process.getBuiltinModule('node:sqlite') as typeof import('node:sqlite') | undefined;
@@ -34,7 +55,7 @@ export class ReadModel {
         CREATE INDEX IF NOT EXISTS messages_to ON messages(to_cat, seq);
         CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, cat TEXT, seq INTEGER NOT NULL, json TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS tasks_cat ON tasks(cat, seq);
-        CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(kind UNINDEXED, ref UNINDEXED, cat UNINDEXED, at UNINDEXED, text);
+        CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(kind UNINDEXED, ref UNINDEXED, cat UNINDEXED, at UNINDEXED, title, text);
         CREATE VIRTUAL TABLE IF NOT EXISTS wiki USING fts5(slug UNINDEXED, title, body);`);
       return db;
     } catch (err) {db.close(); throw err;}
@@ -89,15 +110,18 @@ export class ReadModel {
   }
   private write(db:DatabaseSync, state:State, from:number) {
     const msg = db.prepare('INSERT INTO messages(seq,id,from_cat,to_cat,json) VALUES(?,?,?,?,?)');
-    const fts = db.prepare('INSERT INTO search(kind,ref,cat,at,text) VALUES(?,?,?,?,?)');
+    const fts = db.prepare('INSERT INTO search(kind,ref,cat,at,title,text) VALUES(?,?,?,?,?,?)');
     const task = db.prepare('INSERT INTO tasks(id,cat,seq,json) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET cat=excluded.cat, json=excluded.json');
     const touched = new Map<string, number>();
     const drop = db.prepare('DELETE FROM wiki WHERE slug=?'), page = db.prepare('INSERT INTO wiki(slug,title,body) VALUES(?,?,?)');
+    const dropRequest = db.prepare(`DELETE FROM search WHERE kind='request' AND ref=?`);
     for (let seq = from; seq < state.events.length; seq++) {
       const e = state.events[seq], d = e.data ?? {};
       // The same shape apply() pushes into state.messages.
-      if (e.type === 'message') {msg.run(seq, e.id, d.from ?? null, d.to ?? null, JSON.stringify({...d, id: e.id, at: e.at})); fts.run('message', e.id, `${d.from} ${d.to}`, e.at, String(d.text ?? ''));}
-      if (e.type === 'memory.noted') fts.run('note', e.id, d.cat ?? null, e.at, `${d.title ?? ''}\n${d.text ?? ''}`);
+      if (e.type === 'message') {msg.run(seq, e.id, d.from ?? null, d.to ?? null, JSON.stringify({...d, id: e.id, at: e.at})); fts.run('message', e.id, `${d.from} ${d.to}`, e.at, '', String(d.text ?? ''));}
+      if (e.type === 'memory.noted') fts.run('note', e.id, d.cat ?? null, e.at, String(d.title ?? ''), String(d.text ?? ''));
+      // The file is read when the event is indexed, and again on a rebuild: the index follows the file's text, not the journal (which keeps metadata only).
+      if (e.type === 'artifact.created') for (const a of artifactIndex([e])) fts.run('artifact', a.id, a.cat, e.at, a.title, artifactExcerpt(join(artifactsDir(dirname(this.file)), basename(a.file)), a.kind));
       if ((e.type === 'task.created' || e.type === 'task.updated') && d.id && !touched.has(d.id)) touched.set(d.id, seq);
       // A full save replaces a page's rows; a wiki.line adds one row under the same slug (wikiSearch keeps the best row per page).
       if (typeof d.slug === 'string') {
@@ -108,8 +132,16 @@ export class ReadModel {
     }
     if (!touched.size) return;
     // Tasks are merged by later updates, so their rows are written from the current state, once per task per flush.
+    // A root task's result is a request row, replaced whenever the task changes, so a later result is found as well.
     const byId = new Map<string, Task>(state.tasks.map(t => [t.id, t]));
-    for (const [id, seq] of touched) {const t = byId.get(id); if (t) task.run(id, t.cat, seq, JSON.stringify(t));}
+    for (const [id, seq] of touched) {
+      const t = byId.get(id);
+      if (!t) continue;
+      task.run(id, t.cat, seq, JSON.stringify(t));
+      if (t.parent) continue;
+      dropRequest.run(id);
+      if (t.result) fts.run('request', id, t.cat, state.events[seq].at, t.text, String(t.result).slice(0, RESULT));
+    }
   }
 
   /** One cat's chat page, the same shape as Store.chat(): newest `limit` messages before `before`, in journal order. */
@@ -124,11 +156,15 @@ export class ReadModel {
       return {messages, more, tasks: mine};
     });
   }
-  /** Full-text search over messages and memory notes, best match first. Each word is quoted, so punctuation cannot break the FTS5 query syntax. */
-  search(query:string, limit = 20):{kind:'message'|'note'; ref:string; cat:string; at:string; text:string}[] {
+  /** Full-text search over messages, memory notes, artifacts (title and text excerpt) and root request results, best match first; one kind only when `kind` is given.
+   *  Each word is quoted, so punctuation cannot break the FTS5 query syntax. */
+  search(query:string, limit = 20, kind?:string):SearchHit[] {
     const words = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
     if (!words.length) return [];
-    return this.use(db => db.prepare('SELECT kind,ref,cat,at,text FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?').all(words.map(w => `"${w}"`).join(' '), limit) as any);
+    const match = words.map(w => `"${w}"`).join(' ');
+    return this.use(db => (kind === undefined
+      ? db.prepare('SELECT kind,ref,cat,at,title,text FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?').all(match, limit)
+      : db.prepare('SELECT kind,ref,cat,at,title,text FROM search WHERE search MATCH ? AND kind=? ORDER BY rank LIMIT ?').all(match, kind, limit)) as any);
   }
   /** Full-text search over wiki pages, best match first, with a short snippet around the match. */
   wikiSearch(query:string, limit = 20):{slug:string; title:string; snippet:string}[] {

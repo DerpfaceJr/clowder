@@ -47,14 +47,17 @@ test('each settings control has one id in the page, so nothing is duplicated whe
   for (const id of ['customize', 'mode', 'mode-note', 'cat-ai', 'cat-ai-provider', 'cat-ai-model', 'cat-ai-effort', 'cat-ai-save', 'cat-ai-error']) {
     assert.equal(html.split(`id="${id}"`).length - 1, 1, `${id} appears once`);
   }
-  assert.match(html, /<details class="chat-settings" data-owner><summary>Settings<\/summary><div class="settings-body">/, 'the controls start inside the Settings disclosure, which the module moves');
+  assert.match(html, /<details class="chat-settings" data-owner><summary>Cat’s settings<\/summary><div class="settings-body">/, 'the controls start inside the Settings disclosure, which the module moves');
 });
 
 test('the save flow closes the flyout instead of reaching into a details element that no longer holds the controls', () => {
   assert.doesNotMatch(app, /closest\('details'\)/);
   assert.match(app, /catSettings\?\.close\(\)/);
   assert.match(app, /catSettings\?\.setCatName\(cat\.name\)/);
-  assert.match(app, /import \{initCatSettingsFlyout\} from '\.\/cat-settings-flyout\.js'/);
+  assert.match(app, /import \{initCatSettingsFlyout,settingsTitle\} from '\.\/cat-settings-flyout\.js'/);
+  // The ⋯ menu's row carries the sheet's own heading, so the row and the sheet it opens share one name.
+  assert.match(app, /catSettings\?\.setCatName\(cat\.name\);\{const row=document\.querySelector\('#pane-menu \.chat-settings>summary'\),words=settingsTitle\(cat\.name\);/);
+  assert.equal(settingsTitle(''), /<summary>([^<]+)<\/summary><div class="settings-body">/.exec(html)[1], 'before a cat is drawn the row reads the same fallback');
 });
 
 test('CSS: the flyout hides with [hidden], covers the chat panel on wider screens, and is a bottom sheet on phones', () => {

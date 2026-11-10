@@ -1,21 +1,22 @@
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import type {FastifyInstance,FastifyReply,FastifyRequest} from 'fastify';
-import {cookie,gatePath,grantOwner} from './access.ts';
+import {MEMBER_REFUSED,cookie,gatePath,grantMember,grantOwner,instanceCookie,memberRoute} from './access.ts';
 import {Pairing,type Device} from './pairing.ts';
 import {creationOptions,requestOptions,verifyAssertion,verifyRegistration} from './webauthn.ts';
-export const deviceToken=(req:FastifyRequest)=>cookie(req,'__Host-town_device');
-// Pairing and renewal send the same cookie: Secure, HttpOnly, host-only (__Host-), Max-Age from the device TTL.
-export const deviceCookie=(token:string,maxAgeMs:number)=>`__Host-town_device=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(maxAgeMs/1000)}`;
+// Pairing, renewal, logout and the step-up send one shape of cookie: Secure, HttpOnly, host-only (__Host-: Secure, Path=/, no Domain).
+// The name carries the team instance (instanceCookie in access.ts); the private town keeps __Host-town_device and __Host-town_stepup.
+const hostCookie=(name:string,token:string,maxAgeS:number)=>`${name}=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeS}`;
 
 // Passkey step-up (plan 5.5). Money settings, Stripe, marking paid and new webhook links stay on the host; an owner device may change them
 // only for a few minutes after it confirmed with its passkey, and only on a stable address (Tailscale or a named tunnel). A Quick Tunnel's
 // host name dies with it, and a passkey works only for the host name it was made for, so the option does not exist there.
 // Adding a passkey needs the host too: Devices opens a short window for one device, so a phone taken while paired cannot add its own.
+// A member device may add one too (plan 10.4, §4.4), but its confirm opens nothing: only an owner device is ever stepped up.
 export const STEP_UP_MS=5*60_000,ALLOW_MS=5*60_000,CHALLENGE_MS=2*60_000;
 const stepped=new WeakSet<FastifyRequest>();
 // The step-up window is held by its own short cookie, not the long-lived device cookie: a copy of the device cookie alone opens nothing.
+// This is the private town's name; a team instance's carries its slug.
 export const STEP_UP_COOKIE='__Host-town_stepup';
-const stepUpCookie=(token:string)=>`${STEP_UP_COOKIE}=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=${STEP_UP_MS/1000}`;
 const digest=(token:string)=>createHash('sha256').update(token).digest();
 /** A request from an owner device that confirmed with its passkey in the last STEP_UP_MS, on the stable address the passkey was made for. */
 export const isSteppedUp=(req:FastifyRequest)=>stepped.has(req);
@@ -31,7 +32,7 @@ export class StepUp{
   }
   // Host only (server.ts, under /api/remote/). The window closes when the passkey is added or after ALLOW_MS.
   allow(id:string){
-    if(!this.pairing.list().some(d=>d.id===id&&d.permission==='owner'))refuse(403,'Only a device paired with control can have a passkey.');
+    if(!this.pairing.list().some(d=>d.id===id&&d.permission!=='viewer'))refuse(403,'Only a device paired with control or as a member can have a passkey.');
     const until=this.now()+ALLOW_MS;this.allowed.set(id,until);return until;
   }
   allowedUntil(id:string){const until=this.allowed.get(id);return until&&until>this.now()?until:undefined;}
@@ -46,8 +47,7 @@ export class StepUp{
   /** Whether this device may change host settings now: freshUntil, with the step-up cookie this device was given. */
   freshFor(id:string,origin:string,token:string){return this.freshUntil(id,origin,token)!==undefined;}
   view(device:Device|undefined,origin:string|undefined,stable:boolean,token:string){
-    const owner=device?.permission==='owner'&&!!origin&&stable;
-    if(!owner)return {available:false};
+    if(!device||device.permission==='viewer'||!origin||!stable)return {available:false};
     const rpId=new URL(origin).hostname,passkey=this.pairing.passkey(device.id);
     return {available:true,passkey:passkey?.rpId===rpId,canAdd:!!this.allowedUntil(device.id),until:this.freshUntil(device.id,origin,token)??null,minutes:STEP_UP_MS/60_000};
   }
@@ -91,8 +91,12 @@ export class StepUp{
   }
 }
 
-/** stable: whether the current origin keeps its host name (Tailscale or a named tunnel). Only then is the passkey step-up offered. */
-export function installRemoteAccess(app:FastifyInstance,pairing:Pairing,getOrigin:()=>string|undefined,stable:()=>boolean=()=>false,now=Date.now){
+/** stable: whether the current origin keeps its host name (Tailscale or a named tunnel). Only then is the passkey step-up offered.
+ *  team: a team instance's slug, so its cookies do not replace the private town's on the same host name (plan 10.2). */
+export function installRemoteAccess(app:FastifyInstance,pairing:Pairing,getOrigin:()=>string|undefined,stable:()=>boolean=()=>false,now=Date.now,team?:string){
+  const DEVICE=instanceCookie('__Host-town_device',team),STEP_UP=instanceCookie(STEP_UP_COOKIE,team);
+  const deviceToken=(req:FastifyRequest)=>cookie(req,DEVICE);
+  const deviceCookie=(token:string)=>hostCookie(DEVICE,token,Math.floor(pairing.config.deviceTtlMs/1000));
   const device=(req:FastifyRequest)=>pairing.authenticate(deviceToken(req));
   const stepUp=new StepUp(pairing,now);
   app.addHook('onRequest',async(req,res)=>{
@@ -103,7 +107,7 @@ export function installRemoteAccess(app:FastifyInstance,pairing:Pairing,getOrigi
     if(!origin||req.headers.host!==new URL(origin).host)return res.code(403).send({error:'Remote access is disabled.'});
     // Authenticated first, on every request: a device used after a day gets a full TTL, and the browser learns the new Max-Age here, whatever route answers.
     const current=device(req);
-    if(current?.renewed)res.header('Set-Cookie',deviceCookie(deviceToken(req),pairing.config.deviceTtlMs));
+    if(current?.renewed)res.header('Set-Cookie',deviceCookie(deviceToken(req)));
     const write=!['GET','HEAD'].includes(req.method);
     // Stripe's real-time authorization webhook: no Origin, no session. Its route accepts only a valid Stripe signature.
     if(path==='/stripe/webhook'&&req.method==='POST')return;
@@ -124,7 +128,9 @@ export function installRemoteAccess(app:FastifyInstance,pairing:Pairing,getOrigi
     if((path.startsWith('/api/remote/')&&!rendezvous)||path==='/api/sharing'||path==='/api/viewer-session')return res.code(403).send({error:'Device access is managed on the host computer.'});
     // Past device management, an owner device passes every isOwner gate on this listener (access.ts). With a fresh passkey step-up on a
     // stable address it also passes isSteppedUp, which only the host-only settings read (server.ts).
-    if(current.permission==='owner'){grantOwner(req);if(stable()&&stepUp.freshFor(current.id,origin,cookie(req,STEP_UP_COOKIE)))stepped.add(req);}
+    // A member device reaches the member routes and nothing else (plan 10.5, access.ts).
+    if(current.permission==='owner'){grantOwner(req);if(stable()&&stepUp.freshFor(current.id,origin,cookie(req,STEP_UP)))stepped.add(req);}
+    else if(current.permission==='member'){if(!memberRoute(req,path))return res.code(403).send({error:MEMBER_REFUSED});grantMember(req,current.person);}
     else if(write&&path!=='/api/logout')return res.code(403).send({error:'This device is paired for viewing only.'});
   });
   // A paired device that got the relay details can find the town after a restart; Devices shows it as followAt.
@@ -132,27 +138,28 @@ export function installRemoteAccess(app:FastifyInstance,pairing:Pairing,getOrigi
   app.get('/api/remote-access',async req=>({remote:true,paired:!!device(req),pollMs:pairing.config.pollMs}));
   app.post('/api/pair',{schema:{body:{type:'object',additionalProperties:false,required:['code','name'],properties:{code:{type:'string',minLength:1,maxLength:64},name:{type:'string',minLength:1,maxLength:60}}}}},async(req,res)=>{
     const {code,name}=req.body as {code:string;name:string};const result=pairing.pair(code,name);
-    res.header('Set-Cookie',deviceCookie(result.token,pairing.config.deviceTtlMs));
+    res.header('Set-Cookie',deviceCookie(result.token));
     return {ok:true,permission:result.device.permission};
   });
-  app.post('/api/logout',async(req,res)=>{const current=device(req);if(current)pairing.revoke(current.id);res.header('Set-Cookie','__Host-town_device=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');return {ok:true};});
+  app.post('/api/logout',async(req,res)=>{const current=device(req);if(current)pairing.revoke(current.id);res.header('Set-Cookie',hostCookie(DEVICE,'',0));return {ok:true};});
   // The step-up routes (public/step-up.js). The gateway above already needs a paired device, and for a POST this origin and the action header.
-  // Each route needs an owner device on a stable address; a Quick Tunnel answers 409 to all of them and GET says available:false.
-  const place=(req:FastifyRequest)=>{
+  // Each route needs an owner device on a stable address, or a member device for adding a passkey; a Quick Tunnel answers 409 to all of them
+  // and GET says available:false.
+  const place=(req:FastifyRequest,member=false)=>{
     const current=device(req),origin=getOrigin();
-    if(!current||current.permission!=='owner')return refuse(403,'Only a device paired with control can use a passkey.');
+    if(!current||!(current.permission==='owner'||member&&current.permission==='member'))return refuse(403,'Only a device paired with control can use a passkey.');
     if(!origin||!stable())return refuse(409,NEEDS_STABLE);
     return {current,origin};
   };
   const answer=async(res:FastifyReply,work:()=>unknown)=>{try{return await work();}catch(error){const e=error as Error&{statusCode?:number};return res.code(e.statusCode&&e.statusCode<500?e.statusCode:400).send({error:e.message});}};
   const credential={body:{type:'object',required:['id','type','response'],properties:{id:{type:'string',maxLength:1400},type:{type:'string',maxLength:20},response:{type:'object',additionalProperties:{type:'string',maxLength:12000}}}}};
-  app.get('/api/step-up',async req=>stepUp.view(device(req),getOrigin(),stable(),cookie(req,STEP_UP_COOKIE)));
-  app.post('/api/step-up/register/options',async(req,res)=>answer(res,()=>{const {current,origin}=place(req);return stepUp.creation(current,origin);}));
-  app.post('/api/step-up/register',{schema:credential},async(req,res)=>answer(res,()=>{const {current,origin}=place(req);stepUp.register(current,origin,req.body);return {ok:true};}));
+  app.get('/api/step-up',async req=>stepUp.view(device(req),getOrigin(),stable(),cookie(req,STEP_UP)));
+  app.post('/api/step-up/register/options',async(req,res)=>answer(res,()=>{const {current,origin}=place(req,true);return stepUp.creation(current,origin);}));
+  app.post('/api/step-up/register',{schema:credential},async(req,res)=>answer(res,()=>{const {current,origin}=place(req,true);stepUp.register(current,origin,req.body);return {ok:true};}));
   app.post('/api/step-up/options',async(req,res)=>answer(res,()=>{const {current,origin}=place(req);return stepUp.request(current,origin);}));
   app.post('/api/step-up',{schema:credential},async(req,res)=>answer(res,()=>{
     const {current,origin}=place(req),{until,token}=stepUp.confirm(current,origin,req.body);
-    res.header('Set-Cookie',stepUpCookie(token));return {until,minutes:STEP_UP_MS/60_000};
+    res.header('Set-Cookie',hostCookie(STEP_UP,token,STEP_UP_MS/1000));return {until,minutes:STEP_UP_MS/60_000};
   }));
   return {device:(req:FastifyRequest)=>device(req)?.id,stepUp};
 }

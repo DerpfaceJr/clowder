@@ -1,4 +1,4 @@
-// Telegram (plan 3.5, D7): talk to the Mayor and answer decisions from your own Telegram chat. ☰ > Devices & AI > Telegram opens this
+// Telegram (plan 3.5, D7): talk to the Mayor and answer decisions from your own Telegram chat. Post office > Channels > Telegram opens this
 // panel on the host computer only: the bot token is a secret and the pairing code makes an owner device, as the phone invite does.
 // Three steps, each shown once the one before it is done: paste the token BotFather gave you, send the one-time code to the bot, and
 // the paired chat shows here (and in Devices as "Telegram", where it can be revoked). Remove takes the token off this computer.
@@ -45,7 +45,7 @@ function injectStyles(doc) {
 
 const h = (tag, props, ...children) => el(tag, props, children.flat().filter(c => c !== null && c !== undefined && c !== false));
 
-/** button: the ☰ entry, shown once the host's route answers. Returns {open, close, refresh, probe, dialog}. */
+/** button: the Post office entry, shown once the host's route answers. Returns {open, close, refresh, probe, dialog}. */
 export function createTelegramPanel({button = null, doc = document, win = globalThis.window, fetchImpl = (...args) => fetch(...args), ask = confirmDialog, now = () => Date.now()} = {}) {
   injectStyles(doc);
   const ui = {status: null, denied: false, code: null, busy: '', msg: null, tokenMsg: null, loaded: false, changing: false};

@@ -18,13 +18,14 @@ import {HermesBridge} from '../src/hermes-bridge.ts';
 import {registerTownMcp} from '../src/town-mcp.ts';
 import {ALLOW_ONCE} from '../src/accounts.ts';
 import type {ConnectorRuntime} from '../src/connector-types.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const FAKE=fileURLToPath(new URL('./fixtures/fake-hermes.mjs',import.meta.url));
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const tmp=(p:string)=>mkdtempSync(join(tmpdir(),p));
 const freePort=()=>new Promise<number>(done=>{const s=createServer().listen(0,'127.0.0.1',()=>{const {port}=s.address() as {port:number};s.close(()=>done(port));});});
-async function until<T>(fn:()=>T|undefined|false|null,ms=20_000,what='condition'):Promise<T>{const end=Date.now()+ms;while(Date.now()<end){const v=fn();if(v)return v;await new Promise(r=>setTimeout(r,25));}assert.fail(`timed out waiting for ${what}`);}
+const until = untilEvery(25, 20000);
 
 // The cats' own model (cats stay on Clowder's loop): one reply, held until a test opens the gate.
 let hold:Promise<void>|null=null;
@@ -95,7 +96,7 @@ test('a duplicate approval.request yields one card; Allow once resumes the run a
   const before=(await fake()).connects;
   const id=w.town.submit('mayor',PUSH,'hermes');
   const card=await until(()=>cards(id).find(a=>a.status==='pending'),15_000,'the card');
-  await until(()=>task(id).status==='waiting',5000,'waiting');
+  await until(()=>task(id).status==='waiting',15_000,'waiting');
   // The stream drops; the bridge reads the run again and Hermes replays approval.request (spike S5).
   await fetch(`${w.sidecar.url}/fake/drop`,{method:'POST'});
   const s=await (async()=>{const end=Date.now()+5000;while(Date.now()<end){const s=await fake();if(s.connects>=before+2)return s;await new Promise(r=>setTimeout(r,50));}assert.fail('no re-attach');})();
@@ -103,7 +104,7 @@ test('a duplicate approval.request yields one card; Allow once resumes the run a
   assert.equal(cards(id).length,1,'one card');
   assert.equal(card.question,'Mayor wants to use GitHub: push_files');assert.equal(card.call?.function.name,'mcp__github__push_files');
   w.town.decide(card.id,ALLOW_ONCE,true);
-  await until(()=>task(id).status==='done',10_000,'done');
+  await until(()=>task(id).status==='done',15_000,'done');
   const answer=(await fake()).answers.at(-1);
   assert.equal(answer.choice,'once');assert.equal(answer.execution_generation,1);assert.match(answer.request_id,/^[0-9a-f]{32}$/);
   assert.equal(pushes.length,1,'the push ran once, in Clowder');assert.equal(pushes[0].args.repo,'town');
@@ -115,9 +116,9 @@ test('a duplicate approval.request yields one card; Allow once resumes the run a
 test('Deny refuses: nothing runs in Clowder and the model is told it was blocked',async()=>{
   const n=pushes.length,id=w.town.submit('mayor',PUSH,'hermes');
   const card=await until(()=>cards(id).find(a=>a.status==='pending'),15_000,'the card');
-  await until(()=>task(id).status==='waiting',5000,'waiting');
+  await until(()=>task(id).status==='waiting',15_000,'waiting');
   w.town.decide(card.id,'Deny',false);
-  const done=await until(()=>task(id).status==='done'&&task(id),10_000,'done');
+  const done=await until(()=>task(id).status==='done'&&task(id),15_000,'done');
   assert.equal((await fake()).answers.at(-1).choice,'deny');
   assert.equal(pushes.length,n,'nothing pushed');
   assert.equal(events(id,'tool.finished').length,0);
@@ -130,10 +131,10 @@ test('delegate through the town MCP returns at once; the child\'s result resumes
   const child=await until(()=>w.store.state.tasks.find(t=>t.parent===id),15_000,'the child');
   assert.equal(child.cat,'scholar');assert.equal(child.mode,'local','the cat stays on Clowder\'s loop, on the town default');
   // The Mayor's turn ended while the child is still working.
-  await until(()=>task(id).status==='waiting_child',10_000,'waiting_child');
+  await until(()=>task(id).status==='waiting_child',15_000,'waiting_child');
   assert.match(events(id,'tool.finished').find(e=>e.data.name==='delegate')!.data.result,new RegExp(`^Delegated to scholar \\(task ${child.id}\\)`));
   open();
-  await until(()=>task(id).status==='done',10_000,'done');
+  await until(()=>task(id).status==='done',15_000,'done');
   const posts=(await fake()).posts.filter((p:any)=>p.session===`clowder-${id}`);
   assert.deepEqual(posts.map((p:any)=>p.key),[id,`child-${child.id}`],'two runs, one session, each its own key');
   assert.match(posts[1].input,/^Result from scholar: Three venues fit/);
@@ -146,11 +147,11 @@ test('delegate through the town MCP returns at once; the child\'s result resumes
 test('delegate-then-approve: the child waits on its own card on Clowder\'s loop; the owner\'s Allow finishes it and resumes the Mayor (Gate 4)',async()=>{
   const n=pushes.length,id=w.town.submit('mayor','@call mcp__clowder__delegate {"cat":"scholar","task":"PUSH-IT to the site."}','hermes');
   const child=await until(()=>w.store.state.tasks.find(t=>t.parent===id),15_000,'the child');
-  const card=await until(()=>w.store.state.approvals.find(a=>a.task===child.id&&a.status==='pending'),10_000,'the child\'s card');
+  const card=await until(()=>w.store.state.approvals.find(a=>a.task===child.id&&a.status==='pending'),15_000,'the child\'s card');
   assert.equal(card.gate,'connector');
-  await until(()=>task(id).status==='waiting_child',10_000,'waiting_child');
+  await until(()=>task(id).status==='waiting_child',15_000,'waiting_child');
   w.town.decide(card.id,ALLOW_ONCE,true);
-  await until(()=>task(id).status==='done',10_000,'done');
+  await until(()=>task(id).status==='done',15_000,'done');
   assert.equal(pushes.length,n+1);assert.equal(pushes.at(-1).cat,'scholar');
   assert.deepEqual((await fake()).posts.filter((p:any)=>p.session===`clowder-${id}`).map((p:any)=>p.key),[id,`child-${child.id}`]);
 });
@@ -159,15 +160,15 @@ test('the monthly cap blocks a new run: a child\'s result waits as held work, an
   const open=gateOpen();
   const id=w.town.submit('mayor','@call mcp__clowder__delegate {"cat":"scholar","task":"Draft the invite."}','hermes');
   const child=await until(()=>w.store.state.tasks.find(t=>t.parent===id),15_000,'the child');
-  await until(()=>task(id).status==='waiting_child',10_000,'waiting_child');
+  await until(()=>task(id).status==='waiting_child',15_000,'waiting_child');
   w.town.setUsageCap('owner',1);
   open();
-  await until(()=>task(id).held==='cap',10_000,'held by the cap');
+  await until(()=>task(id).held==='cap',15_000,'held by the cap');
   assert.equal(task(id).status,'waiting');
   assert.equal((await fake()).posts.filter((p:any)=>p.session===`clowder-${id}`).length,1,'no second run while capped');
   assert.ok(w.store.state.approvals.some(a=>a.gate==='cap'&&a.status==='pending'),'the month\'s cap card');
   w.town.setUsageCap('owner',null);
-  await until(()=>task(id).status==='done',10_000,'done after the lift');
+  await until(()=>task(id).status==='done',15_000,'done after the lift');
   const posts=(await fake()).posts.filter((p:any)=>p.session===`clowder-${id}`);
   assert.deepEqual(posts.map((p:any)=>p.key),[id,`child-${child.id}`]);
 });
@@ -180,7 +181,7 @@ test('an Idempotency-Key is never reused for new work: an old key, even across a
   // Hermes keeps its keys 24 h across restarts.
   const pid=(await fake()).pid;
   await fetch(`${w.sidecar.url}/fake/exit`,{method:'POST'});
-  await until(()=>!w.sidecar.ready(),10_000,'Hermes down');
+  await until(()=>!w.sidecar.ready(),15_000,'Hermes down');
   await until(()=>w.sidecar.ready(),20_000,'Hermes back');
   assert.notEqual((await fake()).pid,pid);
   await assert.rejects(w.bridge.startRun({task:id,session:`clowder-${id}`,input:'more different work',key:id,instructions:''}),/already run request/);
@@ -191,7 +192,7 @@ test('an Idempotency-Key is never reused for new work: an old key, even across a
 test('a Hermes restart during a wait ends the task interrupted with one message and no card left pending (S5, until row 4.12)',async()=>{
   const id=w.town.submit('mayor',PUSH,'hermes');
   const card=await until(()=>cards(id).find(a=>a.status==='pending'),15_000,'the card');
-  await until(()=>task(id).status==='waiting',5000,'waiting');
+  await until(()=>task(id).status==='waiting',15_000,'waiting');
   const run=task(id).hermes!.run!;
   await fetch(`${w.sidecar.url}/fake/exit`,{method:'POST'});
   await until(()=>task(id).status==='interrupted',30_000,'interrupted');

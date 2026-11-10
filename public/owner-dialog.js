@@ -78,8 +78,26 @@ export function ownerDialog({doc = document, id, eyebrow, title, lede = '', clos
   return {dialog, body, lede: ledeNode};
 }
 
-/** A ☰ > Devices & AI entry for a host or owner panel, added beside Telegram. Hidden until the panel's probe says this device may use it. */
+/**
+ * An entry in the Post office (post-office.js) for a host or owner panel: group is 'channels', 'signins', 'signins-advanced' or 'apps'.
+ * Hidden until the panel's probe says this device may use it.
+ */
 // host: the panel's routes live on the main listener only, so a paired phone never sees the entry (style.css hides .remote [data-host]).
+export function postOfficeEntry(doc, {id, text, note, open, group, host = true}) {
+  const items = doc.querySelector?.(`#post-office-dialog [data-items="${group}"]`);
+  if (!items) return null;
+  let button = doc.getElementById?.(id);
+  if (!button) {
+    button = h('button', {text, attrs: {type: 'button', id, 'data-owner': '', ...(host ? {'data-host': ''} : {}), 'aria-haspopup': 'dialog', 'data-note': note}});
+    button.hidden = true;
+    items.append(button);
+  }
+  button.addEventListener('click', () => void open());
+  return button;
+}
+
+/** A ☰ > Devices entry for an owner panel that is about who reaches this town rather than a cat's channel (People, plan 10.11). Hidden until
+ *  the panel's probe says this device may use it. host: as postOfficeEntry. */
 export function devicesEntry(doc, {id, text, note, open, host = true}) {
   const items = doc.querySelector?.('#settings-devices > .menu-items');
   if (!items) return null;

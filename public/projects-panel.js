@@ -8,8 +8,15 @@ import {plainWords} from './plain-words.js';
 // The pure helpers are exported for Node tests; the DOM is built with createElement and textContent only. Styles: public/projects-panel.css.
 
 const DAY=86400000,WEEK=7*DAY;
-const TONE={queued:'quiet',running:'working','waiting for you':'attention',done:'done',failed:'failed',stopped:'quiet'};
+// Interrupted reads as broken, not as the owner's own Stop (plan 11.13, F3): the failed tone, its own word, and Retry.
+const TONE={queued:'quiet',running:'working','waiting for you':'attention',done:'done',failed:'failed',stopped:'quiet',interrupted:'failed'};
 export const statusTone=status=>TONE[status]??'quiet';
+const STATUS_WORDS={queued:'Queued',running:'Running','waiting for you':'Waiting for you',done:'Done',failed:'Failed',stopped:'Stopped',interrupted:'Interrupted'};
+export const statusLabel=status=>STATUS_WORDS[status]??String(status??'Unknown');
+// Retry (11.1's route) is for a failed or interrupted request with nothing of it still running: the root keeps its status while a retry runs.
+export const canRetry=project=>['failed','interrupted'].includes(project?.status)&&!project.counts?.running&&!project.counts?.waiting;
+// A fetch that got no answer at all, in the words of the header's bar (plan 11.5), not the browser's "Failed to fetch" (F7).
+export const NOT_ANSWERING='Clowder is not answering.';
 
 // Progress is a 0..1 task-count proxy from the server. Anything unreadable shows as 0, never as a made-up value.
 export function progressPercent(progress){const n=Number(progress);return Number.isFinite(n)?Math.round(Math.min(1,Math.max(0,n))*100):0;}
@@ -185,7 +192,7 @@ export function summaryTiles({goals=[],goalsKnown=true,needsYou=null,week=null,a
   const made=artifacts?artifacts.filter(a=>Date.parse(a.createdAt)>=since).length:null;
   return [
     {label:'Active goals',value:goalsKnown?String(sections.active.length):'—',hint:goalsKnown?`${sections.paused.length} paused`:''},
-    {label:'Needs you',value:Number.isFinite(needsYou)?String(needsYou):'—',hint:'decisions and to-dos'},
+    {label:'Inbox',value:Number.isFinite(needsYou)?String(needsYou):'—',hint:'decisions and to-dos'},
     {label:'Tokens, 7 days',value:compactCount(week?.tokens??null),hint:'provider-reported'},
     {label:'Artifacts, 7 days',value:made===null?'—':String(made),hint:'saved by the cats'},
   ];
@@ -222,7 +229,7 @@ function ensureStyles(doc=globalThis.document){
 
 const EMPTY={active:'No goal is running right now.',waiting:'No goal is waiting for you.',paused:'No goal is paused.',done:'No goal has finished yet.'};
 
-// needsYou(): the one "needs you" count from the Needs you panel, or null before it has loaded.
+// needsYou(): the one "needs you" count from the Inbox panel, or null before it has loaded.
 export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowHamlet=()=>{},onOpenArtifact=()=>{},onAskMayorReview=null,needsYou=()=>null,fetchImpl=(...args)=>fetch(...args),act=()=>Promise.reject(new Error('Goals cannot be changed here.'))}){
   ensureStyles();
   let busy=false,again=false,lastKey=null,goalsOwner=false,goalsKnown=false;
@@ -270,7 +277,8 @@ export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowH
 
   function card(project){
     const titleId=`project-title-${project.id}`;
-    const chip=el('span',{className:'status-chip',text:project.status,attrs:{'data-tone':statusTone(project.status)}});
+    const chip=el('span',{className:'status-chip',text:statusLabel(project.status),attrs:{'data-tone':statusTone(project.status)}});
+    const reason=project.status==='interrupted'&&project.reason?[el('p',{className:'goal-note request-reason',text:clip(plainWords(humanizeText(project.reason,known)),200)})]:[];
     const percent=progressPercent(project.progress);
     const bar=el('div',{className:'progress',attrs:{role:'progressbar','aria-label':'Task progress','aria-valuemin':'0','aria-valuemax':'100','aria-valuenow':String(percent)}},[
       el('i',{style:{width:`${percent}%`}}),
@@ -304,8 +312,11 @@ export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowH
     };
     const chat=el('button',{text:'Open in chat',attrs:{type:'button'}});
     chat.onclick=()=>onOpenChat(project.lead);
+    const actions=[hamlet,chat];
+    if(goalsOwner&&canRetry(project)){const retry=button('Retry',()=>retryRequest(project,retry),'request-retry');actions.unshift(retry);}
     return el('li',{},[el('article',{className:'project-card request-card',attrs:{'data-status':project.status,'aria-labelledby':titleId}},[
       el('div',{className:'project-head'},[el('h3',{text:humanizeText(project.title,known),attrs:{id:titleId}}),chip]),
+      ...reason,
       bar,
       el('p',{className:'project-counts',text:countsLine(project.counts)}),
       stats,
@@ -315,8 +326,19 @@ export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowH
       ...artifactChips(`p:${project.id}`,projectArtifacts),
       el('p',{className:'project-meta muted',text:`Started ${stamp(project.startedAt)} · updated ${stamp(project.updatedAt)}`}),
       el('p',{className:'project-meta muted',text:usageLine(project.usage)}),
-      el('div',{className:'project-actions'},[hamlet,chat]),
+      el('div',{className:'project-actions'},actions),
     ])]);
+  }
+
+  // One tap, one retry: a second tap before the list reloads does nothing. A refusal stays on screen, so the list is not reloaded over it.
+  async function retryRequest(project,b){
+    if(b.disabled)return;
+    b.disabled=true;
+    try{await act(`tasks/${encodeURIComponent(project.id)}/retry`,{});}
+    catch(error){b.disabled=false;status.hidden=false;status.textContent=error instanceof TypeError?`Retry did not go through. ${NOT_ANSWERING}`:error.message;return;}
+    status.hidden=true;status.textContent='';
+    lastKey=null;
+    await refresh();
   }
 
   // Owner buttons call the owner routes; the server says what is allowed. A refusal shows in the status line.
@@ -329,7 +351,7 @@ export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowH
 
   // Removal and stop ask first, in the app's styled dialog. The server refuses an active goal's removal, so the button is never offered for one.
   async function removeGoal(goal){
-    const ok=await confirmDialog({title:`Remove “${clip(goal.title,60)}”?`,message:'It leaves the goal list, Needs you and the Mayor’s banner. The journal keeps the record.',confirmLabel:'Remove goal',cancelLabel:'Keep it',danger:true});
+    const ok=await confirmDialog({title:`Remove “${clip(goal.title,60)}”?`,message:'It leaves the goal list, the Inbox and the Mayor’s banner. The journal keeps the record.',confirmLabel:'Remove goal',cancelLabel:'Keep it',danger:true});
     if(ok)await goalAction(goal,'archive',{});
   }
 
@@ -345,7 +367,7 @@ export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowH
   // One removal suggestion. Approve removes the goal (it asks first); Keep records the answer and the goal stays.
   async function decideReview(review,approve,buttons){
     if(approve){
-      const ok=await confirmDialog({title:`Remove ${review.goalTitle?`“${clip(humanizeText(review.goalTitle),60)}”`:'this goal'}?`,message:'It leaves the goal list, Needs you and the Mayor’s banner. The journal keeps the record.',confirmLabel:'Remove goal',cancelLabel:'Keep it',danger:true});
+      const ok=await confirmDialog({title:`Remove ${review.goalTitle?`“${clip(humanizeText(review.goalTitle),60)}”`:'this goal'}?`,message:'It leaves the goal list, the Inbox and the Mayor’s banner. The journal keeps the record.',confirmLabel:'Remove goal',cancelLabel:'Keep it',danger:true});
       if(!ok)return;
     }
     const [removeWord='Remove',keepWord='Keep']=review.options??[];
@@ -482,8 +504,10 @@ export function createProjectsPanel({panel,body,status,onOpenChat=()=>{},onShowH
     if(busy){again=true;return;}
     busy=true;
     try{
-      const [r,a,g]=await Promise.all([fetchImpl('/api/projects'),Promise.resolve().then(()=>fetchImpl('/api/artifacts')).catch(()=>null),Promise.resolve().then(()=>fetchImpl('/api/goals')).catch(()=>null)]);
-      if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Request failed');
+      const [r,a,g]=await Promise.all([Promise.resolve().then(()=>fetchImpl('/api/projects')).catch(()=>null),Promise.resolve().then(()=>fetchImpl('/api/artifacts')).catch(()=>null),Promise.resolve().then(()=>fetchImpl('/api/goals')).catch(()=>null)]);
+      // No answer at all: the host is down or asleep. The list comes back on its own, since the page reloads it when Clowder answers.
+      if(!r)throw new Error(`${NOT_ANSWERING} The list comes back when it does.`);
+      if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Try again in a moment.');
       const list=await r.json();
       // Artifacts and goals are extra reads. When one fails, the figures that need it show a dash.
       const artifactData=a?.ok?await a.json().catch(()=>null):null;

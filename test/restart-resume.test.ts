@@ -10,6 +10,7 @@ import {Town} from '../src/engine.ts';
 import {allRoles} from '../src/roles.ts';
 import type {Provider} from '../src/provider.ts';
 import type {ConnectorRuntime} from '../src/connector-types.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const SEARCH='mcp__fake__search';
@@ -33,7 +34,7 @@ function scripted(hangOnReport=false){
   const provider:Provider=async messages=>{if(isRecorder(messages))return reply('Nothing new.');seen.push([...messages]);if(!tools(messages).length)return searchCall as any;if(hangOnReport)return never();return reply(`Report: ${tools(messages).join(' | ')}`);};
   return {provider,seen};
 }
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(10);
 function open(file:string,provider:Provider,rt:ConnectorRuntime){const store=new Store(file,allRoles(config)),town=new Town(store,config,{test:provider});town.connectors=()=>rt;return {store,town};}
 const task=(store:Store,id:string)=>store.state.tasks.find(t=>t.id===id)!;
 const ownerMessages=(store:Store)=>store.state.messages.filter(m=>m.from==='owner').length;
@@ -91,7 +92,7 @@ test('a task with no checkpoint still ends interrupted, and a task resumed once 
   a.town.dispose();rmSync(checkpoint(file,lost));
   const b=open(file,scripted().provider,rt);
   assert.equal(task(b.store,lost).status,'interrupted');
-  assert.equal(task(b.store,lost).result,'Server restarted during work. Send a new message to retry.');
+  assert.equal(task(b.store,lost).result,'Server restarted during work. Retry runs it again.');
   b.town.dispose();
   // Resumed, and the server stops again before the next turn boundary: the next boot ends it.
   const c1=scripted(true),c=open(file,c1.provider,rt),id=c.town.submit('scholar','Search again','test');

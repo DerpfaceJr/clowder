@@ -17,6 +17,7 @@ import {quests} from '../src/quests.ts';
 import {installRemoteAccess} from '../src/remote-access.ts';
 import {allRoles} from '../src/roles.ts';
 import {Store} from '../src/store.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
 const PORT = 4321; // the loopback port the hub advertises; nothing listens here
@@ -24,7 +25,7 @@ const ORIGIN = 'https://clowder-test.tail1234.ts.net', HOST = new URL(ORIGIN).ho
 const LOOPBACK = `http://127.0.0.1:${PORT}/api/connectors/oauth/callback`, REMOTE = `${ORIGIN}/api/connectors/oauth/callback`;
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const tmp = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
-async function until(fn: () => boolean, ms = 10000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 20)); } assert.fail('Timed out'); }
+const until = untilEvery(20);
 const fakeConnect = (async () => ({info: {}, listTools: async () => [], callTool: async () => ({text: 'ok', isError: false}), close: async () => {}})) as any;
 
 // One sign-in server for every directory URL, plus GitHub's GET /user. device: its metadata lists a device authorization endpoint.

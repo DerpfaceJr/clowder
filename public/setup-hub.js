@@ -1,7 +1,7 @@
 // "Set up Clowder": one hub that reads the owner's status and runs each first-run step in place, so nothing needs a terminal.
 // The pure functions (status JSON -> rows, counts, the auto-open rule) are exported for tests; the DOM is built below them.
 import {pushSupport} from './notify.js';
-import {isReference} from './accounts-panel.js';
+import {ACCOUNTS_NAME, isReference} from './accounts-panel.js';
 import {icon} from './icons.js';
 
 export const SEEN_KEY = 'clowder.setup.seen';
@@ -41,16 +41,17 @@ export function phoneStep(remote) {
   return {...base, state: 'needs', text: 'Pair your phone to open Clowder from your pocket.', action: {kind: 'pair', label: 'Pair your phone'}};
 }
 
+// The step's button opens Accounts & connections, so it says so in every state: a button is named after the dialog it opens.
 export function appsStep(connectors) {
-  const base = {id: 'apps', kind: 'optional', title: 'Apps your cats can use'};
-  if (connectors === null) return {...base, state: 'optional', text: 'Could not check your apps just now.', action: {kind: 'connectors', label: 'Open apps'}};
+  const base = {id: 'apps', kind: 'optional', title: 'Apps your cats can use'}, action = {kind: 'connectors', label: `Open ${ACCOUNTS_NAME}`};
+  if (connectors === null) return {...base, state: 'optional', text: 'Could not check your apps just now.', action};
   const list = Array.isArray(connectors) ? connectors : [];
   const needs = list.filter(c => NEEDS_YOU.includes(c.status)).map(c => c.name);
-  if (needs.length) return {...base, state: 'needs', text: `${joinNames(needs)} needs you.`, action: {kind: 'connectors', label: 'Open apps'}};
+  if (needs.length) return {...base, state: 'needs', text: `${joinNames(needs)} needs you.`, action};
   // Only what the owner connected counts as Ready (ux-audit F12): a reference starter such as Context7 is not an app of theirs.
   const connected = list.filter(c => c.status === 'connected' && !isReference(c)).map(c => c.name);
-  if (connected.length) return {...base, state: 'ready', text: `${joinNames(connected)} connected.`, action: {kind: 'connectors', label: 'Manage apps'}};
-  return {...base, state: 'optional', text: 'Nothing connected yet. Connect the services your cats can use, such as your email, calendar or GitHub.', action: {kind: 'connectors', label: 'Choose apps'}};
+  if (connected.length) return {...base, state: 'ready', text: `${joinNames(connected)} connected.`, action};
+  return {...base, state: 'optional', text: 'Nothing connected yet. Connect the services your cats can use, such as your email, calendar or GitHub.', action};
 }
 
 // Null when this browser cannot do web push at all, so the row is hidden.
@@ -144,19 +145,47 @@ async function readSetup(win) {
   return {steps: buildSteps(inputs), later: workshop.then(w => buildSteps({...inputs, workshop: w}))};
 }
 
-// Runs once at startup. Opens the hub when the brain is not ready, then never again on this browser.
+/**
+ * Resolves once the town has had its turn: its loading notice is gone, so a new world's welcome (intro-cinematic.js) has started if it
+ * is going to, and no welcome is playing. The hub is a modal dialog, which draws over the welcome's full-screen flight: opened on its
+ * 1.5 s timer it covered the Mayor's first words (hub at 4.0 s, welcome behind it at 9.4 s; headless Edge at 1280x800 on a fresh
+ * scratch town, n=1, measured 2026-11-10). settleMs lets the header and dock fade back in (0.9 s) before the hub opens.
+ */
+export function afterWelcome(win = window, doc = document, settleMs = 1000) {
+  const loading = doc.getElementById('town-loading');
+  const quiet = () => (!loading || loading.hidden) && !doc.body.classList.contains('cinematic');
+  if (quiet()) return Promise.resolve();
+  return new Promise(resolve => {
+    const watch = typeof win.MutationObserver === 'function' && loading ? new win.MutationObserver(() => check()) : null;
+    const later = () => win.setTimeout(check, settleMs);
+    function check() {
+      if (!quiet()) return;
+      watch?.disconnect();
+      win.removeEventListener('cinematic', later);
+      resolve();
+    }
+    watch?.observe(loading, {attributes: true, attributeFilter: ['hidden']});
+    win.addEventListener('cinematic', later);
+  });
+}
+
+// Runs once at startup. Opens the hub when the brain is not ready, after the welcome, then never again on this browser.
 export async function autoOpenOnce(win = window, doc = document) {
   let storage = null;
   try { storage = win.localStorage; if (storage.getItem(SEEN_KEY)) return false; } catch { return false; }
   let models;
   try { models = await request('/api/models/status'); } catch { return false; }
-  if (!shouldAutoOpen([brainStep(models)], storage) || doc.querySelector('dialog[open]')) return false;
+  if (!shouldAutoOpen([brainStep(models)], storage)) return false;
+  await afterWelcome(win, doc);
+  // The owner has begun (a dialog is open, or there are words in the composer): the hub stays a tap away on its card, and offers itself next launch.
+  if (doc.querySelector('dialog[open]') || doc.getElementById('message')?.value) return false;
   try { storage.setItem(SEEN_KEY, '1'); } catch { return false; }
   await openSetupHub(win, doc);
   return true;
 }
 
-const view = {win: null, doc: null, dialog: null, count: null, list: null, steps: [], poll: 0, pairTimer: 0, round: 0};
+// focus: the step whose button gets focus once the hub has drawn, after a dialog that step opened closes (returnFrom).
+const view = {win: null, doc: null, dialog: null, count: null, list: null, steps: [], poll: 0, pairTimer: 0, round: 0, focus: null};
 
 export async function openSetupHub(win = window, doc = document) {
   view.win = win;
@@ -191,7 +220,7 @@ function ensureDialog() {
     view.list,
   ]);
   view.dialog = el(doc, 'dialog', {className: 'setup-hub', 'aria-labelledby': 'setup-hub-title'}, [body]);
-  view.dialog.addEventListener('close', stopPolling);
+  view.dialog.addEventListener('close', () => { stopPolling(); view.focus = null; });
   doc.body.append(view.dialog);
   return view.dialog;
 }
@@ -223,6 +252,7 @@ async function refresh() {
   const summary = summarize(view.steps);
   view.count.textContent = summary.text;
   view.list.replaceChildren(...view.steps.map(rowFor));
+  focusStep();
   void resumePull();
   const round = ++view.round;
   void later.then(steps => {
@@ -230,7 +260,20 @@ async function refresh() {
     if (view.round !== round || !row || !step) return;
     view.steps = steps;
     row.replaceWith(rowFor(step));
+    focusStep();
+    if (view.focus === 'workshop') view.focus = null;
   });
+}
+
+// Back from a dialog a step opened: focus goes to that step's button, so the next key press acts where the owner left off. The workshop
+// row gets its button when its slower check lands, so its wish waits for that; by then the owner may have tabbed into the list, and
+// focus is theirs. A step that came back with no button (it turned ready) leaves focus where the hub put it.
+function focusStep() {
+  if (!view.focus || !view.dialog?.open) return;
+  const button = view.list.querySelector(`[data-step="${view.focus}"] .setup-action`);
+  if (!button) { if (view.focus !== 'workshop') view.focus = null; return; }
+  view.focus = null;
+  if (!view.list.contains(view.doc.activeElement)) button.focus();
 }
 
 function rowFor(step) {
@@ -258,19 +301,36 @@ function actionFor(step, ctx) {
 }
 
 function run(action, ctx) {
-  if (action.kind === 'models') return openOther('models', '#models-open');
-  if (action.kind === 'connectors') return openOther('accounts', '#accounts-open');
+  if (action.kind === 'models') return openOther('models', '#models-open', stepOf(ctx));
+  if (action.kind === 'connectors') return openOther('accounts', '#accounts-open', stepOf(ctx));
   if (action.kind === 'pull') return pull(action.model, ctx);
   if (action.kind === 'pair') return pair(ctx);
   if (action.kind === 'claude-login') return claudeLogin(ctx);
   if (action.kind === 'notify') return notify(ctx);
 }
 
-// The surface opens over the town, so the hub steps aside first. Falls back to the button the settings menu uses.
-function openOther(name, selector) {
+const stepOf = ctx => ctx.li?.getAttribute('data-step') ?? null;
+
+// The surface opens over the town, so the hub steps aside first, and comes back when the surface closes (returnFrom). Falls back to
+// the button the Post office and the settings menu use.
+function openOther(name, selector, step = null) {
+  const {win, doc} = view;
   closeHub();
-  if (window.openSurface) window.openSurface(name);
-  else view.doc.querySelector(selector)?.click();
+  if (win.openSurface) win.openSurface(name);
+  else doc.querySelector(selector)?.click();
+  returnFrom([...doc.querySelectorAll('dialog[open]')].find(d => d !== view.dialog), step);
+}
+
+// Setup is a loop: Esc, the close button or the phone's back pill on a dialog that a step opened shows the hub again, read afresh, with
+// focus on that step's button. Only this one opening is watched, so the same dialog opened from anywhere else closes to where it was
+// opened. When the owner went on from it to another panel (one is open as it closes), the hub stays away.
+function returnFrom(dialog, step) {
+  if (!dialog) return;
+  dialog.addEventListener('close', () => {
+    if (view.doc.querySelector('dialog[open]')) return;
+    view.focus = step;
+    void openSetupHub(view.win, view.doc);
+  }, {once: true});
 }
 
 function note(parent, text) {
@@ -300,7 +360,7 @@ async function claudeLogin(ctx) {
   ctx.main.querySelector('.setup-login')?.remove();
   try {
     const started = await request('/api/models/claude/login', 'POST', {});
-    if (!started.auto) { ctx.button.disabled = false; return openOther('models', '#models-open'); }
+    if (!started.auto) { ctx.button.disabled = false; return openOther('models', '#models-open', stepOf(ctx)); }
     const box = el(view.doc, 'div', {className: 'setup-login'}, [
       ...(started.vpn ? [el(view.doc, 'p', {className: 'setup-error', textContent: `A VPN is on (${started.vpn}). Claude’s sign-in usually refuses VPN addresses: turn it off, then tap Sign in with Claude again.`})] : []),
       el(view.doc, 'p', {className: 'setup-note', textContent: 'Claude’s sign-in page opened in your browser. Click Authorize there; this turns green by itself.'}),

@@ -4,21 +4,35 @@ export function distanceToSegment(x,z,a,b){
   const t=d?Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/d)):0;
   return Math.hypot(x-a[0]-dx*t,z-a[1]-dz*t);
 }
+// A walker slows by up to PACE_SLOW in a bend as tight as PACE_TIGHT metres in radius, easing in over the PACE_AHEAD
+// metres before it and out over PACE_BEHIND after; bends wider than PACE_EASY metres cost nothing.
+const PACE_SLOW=.2,PACE_TIGHT=.7,PACE_EASY=2.5,PACE_AHEAD=.9,PACE_BEHIND=.3;
 export function makePath(points){
   const clean=points.filter((p,i)=>!i||Math.hypot(p[0]-points[i-1][0],p[1]-points[i-1][1])>.001);
   let length=0;const segments=[];
-  for(let i=1;i<clean.length;i++){const a=clean[i-1],b=clean[i],size=Math.hypot(b[0]-a[0],b[1]-a[1]);segments.push({a,b,start:length,size});length+=size;}
+  for(let i=1;i<clean.length;i++){const a=clean[i-1],b=clean[i],size=Math.hypot(b[0]-a[0],b[1]-a[1]);segments.push({a,b,start:length,size,yaw:Math.atan2(b[0]-a[0],b[1]-a[1])});length+=size;}
+  // Bend at each joint: turn over the mean of its two segments, as a curvature (1 / radius).
+  const bends=segments.slice(1).map((s,i)=>{const p=segments[i],turn=Math.abs(Math.atan2(Math.sin(s.yaw-p.yaw),Math.cos(s.yaw-p.yaw)));return {at:s.start,k:turn/Math.max(.05,(p.size+s.size)/2)};});
+  const find=d=>{let lo=0,hi=segments.length-1;while(lo<hi){const m=(lo+hi)>>1;if(segments[m].start+segments[m].size<d)lo=m+1;else hi=m;}return segments[lo];};
   return {length,at(distance){
-    const d=Math.max(0,Math.min(length,distance));
-    const s=segments.find(s=>d<=s.start+s.size)||segments.at(-1);
+    const d=Math.max(0,Math.min(length,distance)),s=find(d);
     if(!s)return {x:clean[0]?.[0]||0,z:clean[0]?.[1]||0,yaw:0};
     const t=(d-s.start)/s.size;
-    return {x:s.a[0]+(s.b[0]-s.a[0])*t,z:s.a[1]+(s.b[1]-s.a[1])*t,yaw:Math.atan2(s.b[0]-s.a[0],s.b[1]-s.a[1])};
+    return {x:s.a[0]+(s.b[0]-s.a[0])*t,z:s.a[1]+(s.b[1]-s.a[1])*t,yaw:s.yaw};
+  },
+  /** Speed factor at `distance`: 1 on the straight, down to 1 - PACE_SLOW into and through a tight bend. dir: -1 for a
+   *  walker going back along the path (distance falling), so it eases in before a bend on its own way, not after it. */
+  pace(distance,dir=1){
+    const from=distance-(dir>0?PACE_BEHIND:PACE_AHEAD),to=distance+(dir>0?PACE_AHEAD:PACE_BEHIND);
+    let k=0,lo=0,hi=bends.length;while(lo<hi){const m=(lo+hi)>>1;if(bends[m].at<from)lo=m+1;else hi=m;}
+    for(let i=lo;i<bends.length&&bends[i].at<=to;i++)k=Math.max(k,bends[i].k);
+    const u=Math.max(0,Math.min(1,(k-1/PACE_EASY)/(1/PACE_TIGHT-1/PACE_EASY)));
+    return 1-PACE_SLOW*u*u*(3-2*u);
   }};
 }
 /** Every new message is visited, even if polling receives a whole burst at once. */
 export class MessageVisits{
-  cursor; queue=[]; current=null;
+  cursor; queue=[]; current=null; replays=new Set();
   ingest(messages,cats){
     if(this.cursor===undefined){this.cursor=messages.at(-1)?.id||null;return;}
     const index=this.cursor===null?-1:messages.findIndex(m=>m.id===this.cursor);
@@ -29,9 +43,12 @@ export class MessageVisits{
     this.cursor=messages.at(-1)?.id||null;
   }
   /** A new world: its messages are history again, and no visit is under way. */
-  reset(){this.cursor=undefined;this.queue=[];this.current=null;}
+  reset(){this.cursor=undefined;this.queue=[];this.current=null;this.replays=new Set();}
   replay(messages,cats){
-    const ids=new Set(cats.map(c=>c.id));this.queue=messages.filter(m=>m.from!==m.to&&ids.has(m.from)&&ids.has(m.to)).slice(-8);
+    // The replayed visits go first; live visits already waiting stay queued after them (once each). An earlier replay's
+    // unwalked visits go: opening another row replaces that row's replay.
+    const ids=new Set(cats.map(c=>c.id)),replayed=messages.filter(m=>m.from!==m.to&&ids.has(m.from)&&ids.has(m.to)).slice(-8),seen=new Set(replayed.map(m=>m.id));
+    this.queue=[...replayed,...this.queue.filter(m=>!seen.has(m.id)&&!this.replays.has(m.id))];this.replays=seen;
   }
   /** layout is the town geometry from hamlet-layout townLayout; its visitPath follows the physical roads. */
   /** ready(message) may hold the next visit back, e.g. until a sleeping sender has woken. */
@@ -50,7 +67,7 @@ export class MessageVisits{
     if(v.phase==='talk'){
       v.elapsed+=dt;if(v.elapsed>=talkSeconds){v.phase='return';v.elapsed=0;}
     }else{
-      v.distance=Math.max(0,Math.min(v.stop,v.distance+(v.phase==='walk'?1:-1)*(reduced?v.stop:speed*dt)));
+      v.distance=Math.max(0,Math.min(v.stop,v.distance+(v.phase==='walk'?1:-1)*(reduced?v.stop:speed*dt*v.path.pace(v.distance,v.phase==='walk'?1:-1))));
       v.position=v.path.at(v.distance);if(v.phase==='return')v.position.yaw+=Math.PI;
       if(v.phase==='walk'&&v.distance>=v.stop){v.phase='talk';v.elapsed=0;}
       else if(v.phase==='return'&&v.distance<=0)this.current=null;

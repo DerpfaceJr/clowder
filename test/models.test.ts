@@ -8,7 +8,7 @@ import {installAccess} from '../src/access.ts';
 import {Pairing} from '../src/pairing.ts';
 import {ModelHub, buildProviders, loadSettings, normalizeMode, registerModelRoutes, saveSettings} from '../src/models.ts';
 import {runSeason} from '../src/season.ts';
-import {CLI_ENV} from '../src/claude-plan.ts';
+import {CLI_ENV, stopCli} from '../src/claude-plan.ts';
 // The fake CLIs read these; a real CLI run gets only CLI_ENV from this process's environment (security pass M3).
 CLI_ENV.push('CAT_FAKE_LINK');
 
@@ -131,6 +131,8 @@ test('login starts the official CLI, returns its URL, and allows one sign-in per
   assert.equal(again.alreadyRunning,true);
   assert.equal(again.auto,true);
   assert.throws(()=>hub.openLoginIn('chatgpt','edge'),/Start the sign-in first/);
+  // The fake CLI would otherwise stay alive for its 10 s timer and hold this file open after the last test.
+  stopCli((hub as any).logins.get('claude').child);
 });
 
 test('Claude sign-in returns the link the CLI opened in the browser, which needs no code, and ignores links on other sites', async()=>{
@@ -190,7 +192,10 @@ test('model routes are owner-only: LAN viewers and proxied loopback get 403, the
     assert.equal(bad.statusCode,400);
     assert.match(bad.json().error,/HTTPS/);
     assert.equal((await app.inject({method:'POST',url:'/api/models/claude/login',headers:owner})).statusCode,200);
-  }finally{await app.close();}
+  }finally{
+    for(const entry of (hub as any).logins.values())stopCli(entry.child);
+    await app.close();
+  }
 });
 
 test('a Claude check that fails after a signed-in answer keeps Claude listed', async()=>{

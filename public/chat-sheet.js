@@ -36,7 +36,8 @@ export const moreTabsName = active => (active ? `More tabs, ${active} open` : 'M
 /**
  * The Options chip: the goal, reply and ask toggles sit in a small popover above the text box instead of a row that
  * appears on focus, so the composer keeps one height and the decision strip above it never moves. Each toggle is a
- * <label data-short> with a checkbox; a hidden label is not offered, and with none offered the chip hides.
+ * <label data-short> with a checkbox; a hidden label is not offered. Under the toggles, manage.js puts its Manage section
+ * (.composer-manage). With no toggle offered and no Manage section shown, the chip hides.
  */
 export function initComposerOptions({form, chip, menu, doc = globalThis.document}) {
   const setOpen = open => {
@@ -50,7 +51,8 @@ export function initComposerOptions({form, chip, menu, doc = globalThis.document
   };
   function paint() {
     const offered = [...menu.querySelectorAll(':scope > label')].filter(label => !label.hidden);
-    chip.hidden = offered.length === 0;
+    const manage = menu.querySelector?.(':scope > .composer-manage');
+    chip.hidden = offered.length === 0 && (!manage || manage.hidden);
     if (chip.hidden) setOpen(false);
     const on = offered.filter(label => label.querySelector('input')?.checked).map(label => label.dataset.short);
     chip.textContent = optionsChipText(on);
@@ -66,6 +68,11 @@ export function initComposerOptions({form, chip, menu, doc = globalThis.document
   doc.addEventListener('pointerdown', e => {
     if (!menu.hidden && !menu.contains(e.target) && !chip.contains(e.target)) close();
   });
+  // Focus that leaves the chip and its popover (Tab on, or the thread switcher beside it) closes it too, so the composer's
+  // popovers never stack (plan 8.7).
+  doc.addEventListener('focusin', e => {
+    if (!menu.hidden && !menu.contains(e.target) && !chip.contains(e.target)) close();
+  });
   setOpen(false);
   paint();
   return {paint, close};
@@ -75,21 +82,31 @@ export function initComposerOptions({form, chip, menu, doc = globalThis.document
  * The tabs' More menu. Tabs that do not fit the bar hide there (class tab-overflow) and the menu lists them in order; a
  * menu item clicks its tab, so app.js's tab switching stays the only one. fit() measures again; it is cheap when nothing
  * changed. The bar keeps a gap of at least minGap between tabs, so they never run into each other.
+ * The tabs follow the ARIA tabs pattern (plan 8.5). One tab is in the Tab order (a roving tabindex): the selected one, or the
+ * first tab shown while the selected one sits under More. Left and Right open the next shown tab and wrap; Home and End open
+ * the first and the last. A tab under More is reached through the More button and its menu, which comes next in the Tab order.
  */
 export function initTabsOverflow({bar, more, menu, minGap = 16, doc = globalThis.document, Observer = globalThis.ResizeObserver}) {
   const tabs = [...bar.querySelectorAll('[data-tab]')];
   let key = '';
   const label = tab => tab.textContent.trim();
+  const shown = () => tabs.filter(t => !t.hidden && !t.classList.contains('tab-overflow'));
   const setOpen = open => {
     menu.hidden = !open;
     more.setAttribute('aria-expanded', String(open));
   };
+  function rove() {
+    const row = shown(), active = tabs.find(t => t.classList.contains('active'));
+    const stop = row.includes(active) ? active : row[0];
+    for (const t of tabs) t.tabIndex = t === stop ? 0 : -1;
+  }
   function paintActive() {
     const active = tabs.find(t => t.classList.contains('active'));
     const hiddenActive = active?.classList.contains('tab-overflow') ? active : null;
     more.classList.toggle('active', !!hiddenActive);
     more.setAttribute('aria-label', moreTabsName(hiddenActive ? label(hiddenActive) : null));
     for (const item of menu.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item.dataset.for === active?.dataset.tab));
+    rove();
   }
   function fit() {
     const live = tabs.filter(t => !t.hidden);
@@ -131,13 +148,24 @@ export function initTabsOverflow({bar, more, menu, minGap = 16, doc = globalThis
   // A tab click (app.js switches the pane) moves the active mark, possibly onto a tab under More.
   bar.addEventListener('click', e => { if (e.target.closest?.('[data-tab]')) paintActive(); });
   bar.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !menu.hidden) { e.stopPropagation(); e.preventDefault(); setOpen(false); more.focus(); }
+    if (e.key === 'Escape' && !menu.hidden) { e.stopPropagation(); e.preventDefault(); setOpen(false); more.focus(); return; }
+    // Alt+Left is the browser's Back, so a key with a modifier is left alone.
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const row = shown(), at = row.indexOf(e.target);
+    if (at < 0) return;
+    const to = {ArrowRight: row[(at + 1) % row.length], ArrowLeft: row[(at - 1 + row.length) % row.length], Home: row[0], End: row[row.length - 1]}[e.key];
+    if (!to) return;
+    e.preventDefault();
+    to.focus();
+    // Opening on focus (automatic activation): the pane shows at once; Town memory and Gallery fill in after.
+    if (to !== e.target) to.click();
   });
   doc.addEventListener('pointerdown', e => {
     if (!menu.hidden && !menu.contains(e.target) && !more.contains(e.target)) setOpen(false);
   });
   if (Observer) new Observer(() => fit()).observe(bar);
   setOpen(false);
+  rove();
   return {fit};
 }
 
@@ -155,17 +183,34 @@ export function paintBrainCard({card, button, text, models, readOnly, canSignIn}
 }
 
 const fitted = new WeakMap();
+// How far a pane's content runs past its foot, where the pane does not scroll (the chat pane from 900px, immersive.css): that
+// part is cut off. A phone's sheet scrolls and pins the composer (pinComposer below), so there it is 0.
+function cutOff(pane) {
+  if (!pane || typeof getComputedStyle !== 'function') return 0;
+  const over = pane.scrollHeight - pane.clientHeight;
+  return over > 0 && /^(hidden|clip)$/.test(getComputedStyle(pane).overflowY) ? over : 0;
+}
 /**
  * The text box's height follows what is typed (one row up to max), never focus: a box that shrank on blur moved the
  * decision strip above it, so a tap on Answer right after typing missed (ux-audit F15). Cheap when the text is unchanged.
+ * The box grows only while its pane has the room. What does not fit a pane that cannot scroll is cut off at the pane's foot,
+ * and that was the composer: at 1024x768 with the setup card, the brain card, one working line and the decision strip showing,
+ * a 7-line draft put the composer's foot 42px under the pane's (getBoundingClientRect, headless Chromium, n=1, measured
+ * 2026-11-10 before this rule). The box now keeps the height that fits, and its text scrolls inside it.
  */
-export function fitComposer(box, {min = 44, max = 132} = {}) {
+export function fitComposer(box, {min = 44, max = 132, pane = box?.closest?.('#inspector-panel')} = {}) {
   // A closed sheet has no width to measure: measure again once it shows.
-  if (!box || !box.clientWidth || fitted.get(box) === box.value) return;
-  fitted.set(box, box.value);
+  if (!box || !box.clientWidth) return;
+  const was = fitted.get(box);
+  // The same text is measured again only where its room may have changed: the box was held short, or the pane now cuts it off.
+  if (was?.value === box.value && !was.held && !(box.offsetHeight > min && cutOff(pane))) return;
   box.style.height = `${min}px`;
-  box.style.height = `${Math.min(max, Math.max(min, box.scrollHeight))}px`;
-  box.style.overflowY = box.scrollHeight > max ? 'auto' : 'hidden';
+  const full = box.scrollHeight, wanted = Math.min(max, Math.max(min, full));
+  box.style.height = `${wanted}px`;
+  const height = Math.max(min, wanted - cutOff(pane));
+  if (height < wanted) box.style.height = `${height}px`;
+  box.style.overflowY = full > height ? 'auto' : 'hidden';
+  fitted.set(box, {value: box.value, held: height < wanted});
 }
 
 /**

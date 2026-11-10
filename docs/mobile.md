@@ -4,7 +4,7 @@ Clowder installs to your home screen and opens full screen, without the browser 
 
 ## Before you start
 
-1. On the computer running Clowder, turn on remote access (the town menu, then Devices, then Enable remote access).
+1. On the computer running Clowder, turn on remote access (Settings, the ☰ button, then Devices, then Enable remote access).
 2. Open Devices, choose Pair a device, and copy the code. Codes work once.
 
 ## Android (Chrome)
@@ -47,7 +47,7 @@ Clowder runs `tailscale serve` on port 443 and only that. It never uses `tailsca
 Money settings, the Stripe key, marking a purchase paid and new routine webhook links stay on the computer. On a stable address (Tailscale, or a Cloudflare named tunnel) a phone paired with control can change them too, after confirming with a passkey:
 
 1. On the computer, open Devices and choose Allow a passkey under the phone. This works for 5 minutes, so a phone taken while paired cannot add its own.
-2. On the phone, open ☰ Settings, Devices & AI, Passkey, and choose Add a passkey.
+2. On the phone, open ☰ Settings, Devices, Passkey, and choose Add a passkey.
 3. Before changing one of those settings, open Passkey and choose Confirm it's you. The phone can change them for the next 5 minutes.
 
 A passkey works only for the address it was made on, so a Quick Tunnel, whose address changes on every restart, never offers one. Remove passkey in Devices, or revoking the phone, ends it at once. Device management, the tunnel and Telegram or Discord bot tokens stay on the computer either way.

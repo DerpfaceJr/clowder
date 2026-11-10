@@ -3,13 +3,14 @@
    "Sign in to a brain" card and the note on a Demonstration reply. Loaded after immersive.css, so an equal selector wins
    here. Colours and sizes are the style.css :root tokens. */
 
-/* Composer: [Options] [text box] [Send] share one row at every width. Without an option to offer, the chip hides. */
+/* Composer: the columns are [Options] [text box] [Send]. Without an option to offer, the chip hides. chat-composer.css adds the
+   thread switcher and Attach, and gives the text box a row of its own where the form is narrow. */
 .immersive .inspector #chat-form{grid-template-columns:auto minmax(0,1fr) 44px}
 .immersive .inspector #chat-form:has(> #composer-options[hidden]){grid-template-columns:minmax(0,1fr) 44px}
 .immersive .inspector #chat-form>textarea,.immersive .inspector #chat-form>div{grid-column:auto}
 .immersive .inspector #chat-form>textarea,.immersive .inspector #chat-form>textarea:focus{height:44px;transition:none}
 
-.composer-options-chip{min-height:var(--tap);max-width:11em;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--paper-2);color:var(--ink);font:600 13px var(--font-ui)}
+.composer-options-chip{min-height:var(--tap);max-width:11em;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--paper-2);color:var(--ink);font:600 var(--text-sm) var(--font-ui)}
 .composer-options-chip[hidden]{display:none}
 .composer-options-chip[aria-expanded=true]{border-color:var(--accent)}
 .composer-options-chip.is-on{background:var(--green);border-color:var(--green);color:var(--paper)}
@@ -17,7 +18,7 @@
 /* The popover opens above the composer over the conversation, like the slash list, so nothing below it moves. */
 .immersive .inspector #chat-form>.composer-options{position:absolute;grid-column:auto;justify-content:normal;left:0;bottom:calc(100% + 6px);z-index:4;display:grid;gap:2px;width:max-content;min-width:min(100%,280px);max-width:100%;padding:6px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);box-shadow:0 -6px 24px #1f2a2026}
 .immersive .inspector #chat-form>.composer-options[hidden]{display:none}
-.immersive .inspector #chat-form .composer-options>label:not([hidden]){display:flex;align-items:center;gap:10px;min-height:var(--tap);margin:0;padding:0 10px;border-radius:var(--radius-control);font-size:14px;color:var(--ink);cursor:pointer}
+.immersive .inspector #chat-form .composer-options>label:not([hidden]){display:flex;align-items:center;gap:10px;min-height:var(--tap);margin:0;padding:0 10px;border-radius:var(--radius-control);font-size:var(--text-sm);color:var(--ink);cursor:pointer}
 .immersive .inspector #chat-form .composer-options>label[hidden]{display:none}
 .immersive .inspector .composer-options>label:hover{background:var(--paper-2)}
 .immersive .inspector .composer-options input{width:18px;height:18px;margin:0;flex:0 0 auto;accent-color:var(--green)}
@@ -35,21 +36,21 @@
 .immersive .inspector .tabs>.tabs-more[hidden]{display:none}
 .immersive .inspector .tabs-more-menu{position:absolute;right:0;top:100%;z-index:4;display:grid;gap:2px;min-width:180px;padding:6px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);box-shadow:0 8px 24px #1f2a2026}
 .immersive .inspector .tabs-more-menu[hidden]{display:none}
-.immersive .inspector .tabs .tabs-more-menu button{flex:none;min-height:var(--tap);min-width:0;padding:0 12px;border:0;border-radius:var(--radius-control);background:none;color:var(--ink);font-size:14px;text-align:left}
+.immersive .inspector .tabs .tabs-more-menu button{flex:none;min-height:var(--tap);min-width:0;padding:0 12px;border:0;border-radius:var(--radius-control);background:none;color:var(--ink);font-size:var(--text-sm);text-align:left}
 .immersive .inspector .tabs .tabs-more-menu button:hover,.immersive .inspector .tabs .tabs-more-menu button[aria-pressed=true]{background:var(--paper-2)}
 .immersive .inspector .tabs .tabs-more-menu button[aria-pressed=true]{font-weight:600;color:var(--accent)}
 
 /* First launch: with no model signed in, the card sits above the decision strip and the composer. */
 .immersive .inspector .brain-card{flex:0 0 auto;display:flex;align-items:center;gap:10px;margin:6px var(--pad,0px) 0;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper-2)}
 .immersive .inspector .brain-card[hidden],#inspector-panel.memory-expanded .brain-card{display:none}
-.brain-card p{flex:1 1 auto;min-width:0;margin:0;font-size:13px;line-height:1.4;color:var(--ink)}
+.brain-card p{flex:1 1 auto;min-width:0;margin:0;font-size:var(--text-sm);line-height:1.4;color:var(--ink)}
 .brain-card button{flex:0 0 auto;min-height:var(--tap);padding:0 14px;border-radius:var(--radius-control);font-weight:600;white-space:nowrap}
 .brain-card button[hidden]{display:none}
 /* The card already says replies are canned, so the composer's own Demonstration line waits until a model is signed in. */
 .immersive .inspector:has(#brain-card:not([hidden])) #chat-form>.demo-warning{display:none}
 
 /* A canned Demonstration reply: one plain line above the bubble. */
-.chat-message .demo-reply-note{margin:0 0 4px;padding:3px 8px;font-size:12px;line-height:1.4}
+.chat-message .demo-reply-note{margin:0 0 4px;padding:3px 8px;font-size:var(--text-xs);line-height:1.4}
 
 /* Phones and tablets: the sheet itself scrolls when it is short (the keyboard is up), so the composer is pinned to its bottom
    edge and the decision strip sits right on top of it. Answer stays on screen while typing. */
@@ -64,3 +65,95 @@
   .composer-options-chip{max-width:8.5em;padding:0 10px}
   .immersive .inspector .tabs>.tabs-more{flex:0 0 auto}
 }
+
+/* Thread view (plan 8.6): work and round rows, decision cards, request and goal threads, the sends on their way and the working line.
+   Only the V0 tokens. Buttons keep the 44 px floor from style.css; rows and the folded card are one line each. */
+.chat-message.pending .text{border-style:dashed}
+.chat-message.pending .sender>span+span{color:var(--ink-3)}
+.chat-message.failed .sender>span+span{color:var(--danger);font-weight:600}
+.chat-message.result .sender>span{color:var(--accent-strong);font-weight:600}
+.fold{margin:0 0 var(--space-3)}
+.work-row{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--tap);margin:0;padding:0 var(--space-2);border:0;border-radius:var(--r-sm);background:none;color:var(--ink-2);font:var(--text-sm)/1.4 var(--font-ui);text-align:left}
+p.work-row{margin:0 0 var(--space-3);padding-left:calc(var(--space-2) + 16px + var(--space-2))}
+.work-row svg{flex:none;display:block;transition:rotate var(--dur-base) var(--ease-out)}
+.work-row[aria-expanded=true] svg{rotate:90deg}
+.work-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.work-row time{flex:none;color:var(--ink-3);font-size:var(--text-xs)}
+@media(hover:hover){button.work-row:hover{background:var(--paper-2)}}
+.work-body{padding:var(--space-2) 0 0 var(--space-5)}
+/* A decision is decision-strip.js's card, styled in decision-strip.css; the thread only spaces it like its other rows. */
+.thread-decision{margin:0 0 var(--space-3)}
+.thread-decision .decision-card{margin:0}
+.pending-actions{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:var(--space-2) 0 0}
+.thread-head{display:flex;align-items:center;gap:var(--space-2);margin:0 0 var(--space-3)}
+.thread-head>p{flex:1 1 auto;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-sm);color:var(--ink)}
+.thread-head>p>span{color:var(--ink-3)}
+.thread-back{flex:none;display:grid;place-items:center;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:var(--r-pill);background:none;color:var(--ink-2)}
+.thread-state{flex:none;padding:2px var(--space-2);border-radius:var(--r-pill);background:var(--paper-2);color:var(--ink-2);font-size:var(--text-xs)}
+.immersive .inspector .chat-live{flex:0 0 auto;max-height:40%;overflow-y:auto;padding:0 var(--pad)}
+.chat-live[hidden]{display:none}
+.live-line{display:flex;align-items:center;gap:var(--space-2);margin:var(--space-1) 0;color:var(--ink-2);font-size:var(--text-sm)}
+.live-line svg{flex:none;display:block;color:var(--working);animation:paw-pulse 1.2s var(--ease-in-out) infinite}
+.live-line>[role=status]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-time{flex:none;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.live-stop{flex:none;margin-left:auto;padding:0 var(--space-3)}
+/* In a cat's chat the line names its request (11.12, F2): the status on top, then For: and Stop in one 44px row, so the line costs one
+   control row, not two (Gate 11, F9: the conversation keeps half the pane at 375). */
+.live-line:has(>.decision-for){display:grid;grid-template-columns:auto auto 1fr auto;row-gap:0;margin:0}
+.live-line>.decision-for{grid-row:2;grid-column:1/4}
+.live-line:has(>.decision-for)>.live-stop{grid-row:2;grid-column:4}
+@keyframes paw-pulse{50%{opacity:.4;scale:.86}}
+@media(prefers-reduced-motion:reduce){.live-line svg{animation:none}.work-row svg{transition:none}}
+
+/* "Go to conversation" (Gate 8): the page's first Tab stop, off screen until it has focus. chat-composer.js opens the chat and focuses
+   the composer when it is chosen. */
+.skip-link{position:fixed;z-index:60;top:var(--space-2);left:var(--space-2);display:inline-flex;align-items:center;min-height:var(--tap);padding:0 var(--space-4);border-radius:var(--r-sm);background:var(--paper);color:var(--accent-strong);box-shadow:var(--e3);font-weight:600;text-decoration:none;translate:0 calc(-100% - var(--space-4))}
+.skip-link:focus-visible,.skip-link:focus{translate:none}
+
+/* The pane header in one row (plan 11.15, F9, chat-ux §3.1): avatar, name over status, the Conversation and Work tabs, ⋯ and close,
+   48px tall. Visit home, Customize, Settings, Roads and Council open from ⋯ (#pane-menu), a native popover, so no script: Escape
+   and a tap outside close it, and each item closes it as it does its job. The tabs stay the pane's own child (mobile-ui.js puts the
+   Inbox before them from 900px), so they are placed into the row, not moved there. --head-tabs is wide enough for Conversation, the
+   16px gap chat-sheet.js keeps and Work; a third tab goes under More. Under 600px the row sits below the sheet's 24px grip. */
+.immersive .inspector{--head-top:0px;--head-h:48px;--head-tabs:148px;--head-end:calc(var(--head-tabs) + 2 * var(--tap))}
+@media(max-width:599px){.immersive .inspector{--head-top:24px}}
+.immersive .inspector #cat-header{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:24px 24px;gap:0 var(--space-2);align-items:center;min-height:var(--head-h);margin:0;padding:0 calc(var(--head-end) + var(--space-2)) 0 var(--pad);border:0;box-shadow:inset 0 -1px 0 var(--line)}
+.immersive .inspector #cat-header>.avatar{grid-row:1/3}
+.immersive .inspector #cat-header>div{display:contents}
+.immersive .inspector #cat-header>div>*,.immersive .inspector #cat-header>div>:is(h2,.cat-status){grid-column:2;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.immersive .inspector #cat-header h2{align-self:end;line-height:1.2}
+.immersive .inspector #cat-header .cat-status{align-self:start;line-height:1.3}
+.immersive .inspector #cat-header>div>p:not(.cat-status):not(.demo-line){display:none}
+/* The name in full (UX audit 2026-11-10, row 7). "Mayor’s corner" needs 124px at 17px and had 62px of it at 1024 and 77px at 375: the
+   tabs, ⋯ and close cannot give way, and the row stays 48px. So the 8px before the tabs goes to the name at every width (the
+   Conversation tab keeps its own space around its word), and where the pane is under 440px wide (a phone sheet, and the 360 to 439px
+   desk pane from 900 to 1333px) the name is 13px and wraps to a second line: two lines of name, then the status, in the same row. A
+   name too long for two lines ends in … on the second. From 440px the name has 150px and keeps its one 17px line. */
+.immersive .inspector #cat-header{padding-right:var(--head-end)}
+@media(max-width:439px),(min-width:900px) and (max-width:1333px){
+ .immersive .inspector #cat-header{grid-template-rows:auto auto;align-content:center}
+ .immersive .inspector #cat-header>div>h2:first-child{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow-wrap:anywhere;font-size:var(--text-sm);line-height:1.2}
+}
+/* A Demonstration line under the row, full width; the "Sign in to a brain" card already says replies are canned, so then it waits. */
+.immersive .inspector #cat-header .demo-line{grid-column:1/-1;margin:0 calc(var(--pad) - var(--head-end)) var(--space-1) 0;white-space:normal}
+.immersive .inspector:has(#brain-card:not([hidden])) #cat-header .demo-line{display:none}
+.immersive .inspector>.panel-tools{top:var(--head-top);right:0;width:var(--tap);height:var(--head-h);min-height:var(--head-h)}
+.immersive .inspector>.panel-tools .panel-close{width:var(--tap);height:var(--tap);margin:0}
+.immersive .inspector>.tabs{position:absolute;top:var(--head-top);right:calc(2 * var(--tap));z-index:3;width:var(--head-tabs);height:var(--head-h);margin:0;padding:0;border:0;gap:0;background:none}
+.immersive .inspector>.tabs .tab-list>button{flex:1 1 auto;min-width:var(--tap);min-height:var(--head-h);padding:0 2px}
+.immersive .inspector>.tabs>.tabs-more{min-height:var(--head-h);padding:0 var(--space-2)}
+
+.pane-menu-open{position:absolute;top:var(--head-top);right:var(--tap);z-index:3;display:grid;place-items:center;width:var(--tap);height:var(--head-h);min-height:var(--tap);margin:0;padding:0;border:0;border-radius:var(--r-pill);background:none;color:var(--ink-2);anchor-name:--pane-menu}
+.pane-menu-open:has(+ .pane-menu:popover-open){background:var(--paper-2);color:var(--accent-strong)}
+.pane-menu{min-width:200px;max-width:calc(100vw - 16px);margin:0;padding:6px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);color:var(--ink);box-shadow:var(--e2)}
+.pane-menu:popover-open{display:grid;gap:2px}
+@supports(anchor-name:--a){.pane-menu{position-anchor:--pane-menu;inset:auto;top:anchor(bottom);right:anchor(right);margin-top:var(--space-1);position-try-fallbacks:flip-block}}
+/* Settings opens its own sheet (cat-settings-flyout.js), so the menu steps aside while it is open and is back on Escape. */
+.pane-menu:has(>.chat-settings[open]){display:none}
+.pane-menu [hidden],.pane-menu #home-label{display:none}
+.immersive #pane-menu>.chat-settings{display:block;position:static;margin:0;padding:0;border:0}
+.pane-menu>button,.pane-menu-views>button,.immersive .inspector .pane-menu>.chat-settings>summary{display:flex;align-items:center;width:100%;min-height:var(--tap);margin:0;padding:0 12px;border:0;border-radius:var(--radius-control);background:none;color:var(--ink);font:var(--text-sm)/1.3 var(--font-ui);letter-spacing:0;text-transform:none;text-align:left}
+.immersive .inspector .pane-menu>.chat-settings>summary::before{content:none}
+.pane-menu-views{display:grid;gap:2px;margin:2px 0 0;padding:4px 0 0;border-top:1px solid var(--line)}
+.pane-menu-views>button.active{background:var(--paper-2);color:var(--accent-strong);font-weight:600}
+@media(hover:hover){.pane-menu>button:hover,.pane-menu-views>button:hover,.immersive .inspector .pane-menu>.chat-settings>summary:hover{background:var(--paper-2)}}

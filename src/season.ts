@@ -14,7 +14,7 @@ import type {JevDecide} from './jev.ts';
 import {ownerDirectives} from './season-view.ts';
 import {memoryFor} from './memory.ts';
 import {loadConfig} from './config.ts';
-import {foundingCats} from './store.ts';
+import {townCats} from './store.ts';
 import {allRoles} from './roles.ts';
 import {autonomyPrompt,envelopeMultiplier,loadAutonomy,seasonAutonomyNote,type AutonomyLevel} from './autonomy.ts';
 import {Workshop} from './workshop.ts';
@@ -312,7 +312,7 @@ export async function runSeason(opts:SeasonOpts):Promise<{events:EconomyEvent[];
       for(const e of batch){events.push(e);state=apply(state,e);}
     };
     if(!state.started){
-      append(startSeason(economy,foundingCats(join(dataDir,'events.jsonl'),config.cats).map(c=>c.id),opts.seed??1));
+      append(startSeason(economy,townCats(join(dataDir,'events.jsonl'),config.cats).map(c=>c.id),opts.seed??1));
     }else{
       if(opts.seed!==undefined&&opts.seed!==state.seed)throw new Error(`Season ${name} runs with seed ${state.seed}, not ${opts.seed}.`);
       if(opts.days!==undefined&&opts.days!==state.days)throw new Error(`Season ${name} has ${state.days} days, not ${opts.days}.`);

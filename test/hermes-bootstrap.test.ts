@@ -10,9 +10,10 @@ import {HermesBootstrap,OFFLINE} from '../src/hermes-bootstrap.ts';
 import {HermesSidecar} from '../src/hermes.ts';
 import {quests} from '../src/quests.ts';
 import {Store} from '../src/store.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const tmp=(p:string)=>mkdtempSync(join(tmpdir(),p));
-async function until<T>(fn:()=>T|undefined|false,ms=10_000):Promise<T>{const end=Date.now()+ms;while(Date.now()<end){const v=fn();if(v)return v;await new Promise(r=>setTimeout(r,20));}assert.fail('timed out');}
+const until = untilEvery(20);
 
 // uv 0.12.24, offline (HTTPS_PROXY to a closed port), `uv python install 3.14`: the tail of its stderr.
 const UV_OFFLINE=`error: Failed to install cpython-3.14.8-windows-x86_64-none

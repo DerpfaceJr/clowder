@@ -7,6 +7,7 @@
   "merchant":{"label":"Market shop","match":"merchant|sales|market|shop|commerce|business","fur":"#f7e5c8","cream":"#fff0d9","patch":"#655853","outfit":"#b76851","roof":"#b97f69","accessory":"parcel","icon":"❋"},
   "operator":{"label":"Dispatch depot","match":"operat|fulfill|logistic|support|deliver","fur":"#976a51","cream":"#f6e3c4","patch":"#75533f","outfit":"#78805b","roof":"#90a18b","accessory":"headset","icon":"◎"},
   "archivist":{"label":"Archive house","match":"archiv|record|knowledge|histor|document","fur":"#d7cbbc","cream":"#f4e4cf","patch":"#918887","outfit":"#607f9a","roof":"#8195ad","accessory":"folders","icon":"▤"},
+  "mailman":{"label":"Post office","match":"mailman|postal|courier","fur":"#a7a29c","cream":"#f3ece2","patch":"#6f6a66","outfit":"#3f6a96","roof":"#b8564a","accessory":"satchel","icon":"✉"},
   "houseDecor":[{"id":"flower_boxes","label":"Flower boxes"},{"id":"chimney","label":"Chimney"},{"id":"lantern","label":"Lantern post"},{"id":"picket_fence","label":"Picket fence"},{"id":"bunting","label":"Bunting"},{"id":"ivy","label":"Ivy"},{"id":"weathervane","label":"Weathervane"},{"id":"birdhouse","label":"Birdhouse"}],
   "chromas":[
     {"id":"classic_ginger","label":"Classic ginger","fur":"#e8914a","outfit":"#b8642c","eyes":"#7bb662"},
@@ -314,6 +315,19 @@
      "cream":"#f4e4cf",
      "outfit":"#607f9a",
      "trim":"#c9a75a"
+    },
+    "mailman":{
+     "base":"puff",
+     "marking":"tabby",
+     "parts":[
+      "knit_beanie",
+      "satchel"
+     ],
+     "fur":"#a7a29c",
+     "patch":"#6f6a66",
+     "cream":"#f3ece2",
+     "outfit":"#3f6a96",
+     "trim":"#c8523f"
     }
    }
   }

@@ -64,24 +64,26 @@ test('held ground is exactly level on every plaza and plot, and eases back to th
   const level=siteLevel(t,0,0);
   for(const h of homes)for(const [dx,dz] of [[0,0],[2,0],[0,-2]])assert.equal(height(h.x+dx,h.z+dz),level,'house pad is level');
   assert.equal(height(0,0),level);
-  const far={x:400,z:-380};assert.equal(height(far.x,far.z),t.raw(far.x,far.z)+t.knoll(far.x,far.z),'far ground keeps its natural height, plus knolls');
+  const far={x:400,z:-380};assert.ok(Math.abs(height(far.x,far.z)-(t.raw(far.x,far.z)+height.lift(far.x,far.z)+height.hill(far.x,far.z)))<1e-9,'far ground keeps its natural height, plus knolls and rolling hills');
+  assert.ok(height.lift(far.x,far.z)<=t.knoll(far.x,far.z),'knolls never rise above their own field');
 });
 
-test('knolls rise only past the commons and away from rivers: town ground is exactly the knoll-free ground, slopes stay gentle',()=>{
+test('knolls and rolling hills rise only past the commons and away from rivers: town ground is exactly the bare ground, slopes stay gentle',()=>{
   const groups=[{id:'main',site:siteCentre(0,L)}];
   for(const id of ['g1','g2','g3'])groups.push({id,site:planSite(groups.map(g=>g.site),L)});
   const homes=[];for(const g of groups)for(let n=0;n<8;n++){const s=placeInGroup(g,homes,groups,L);if(!s)break;homes.push({...s,group:g.id});}
   const cats=homes.map((h,i)=>({id:'c'+i,group:h.group,home:{x:h.x,z:h.z,plot:h.plot,style:'builder'}})),layout=townLayout(cats,groups,raw);
   const mem={...layout.memorial,r:L.memorial_reserve},holds=townHolds(t,layout.sites,homes,mem,L),height=heldGround(t,holds);
-  const {knolls:_k,...bare}=P,t0=terrain(bare),plain=heldGround(t0,townHolds(t0,layout.sites,homes,mem,L));
+  const {knolls:_k,rolling:_r,...bare}=P,t0=terrain(bare),plain=heldGround(t0,townHolds(t0,layout.sites,homes,mem,L));
   const spots=[...homes,...layout.sites,mem,...layout.roads.flatMap(r=>r.points.map(([x,z])=>({x,z})))];
   for(const s of spots)for(const [dx,dz] of [[0,0],[P.dry_probe,0],[0,-P.dry_probe]])assert.equal(height(s.x+dx,s.z+dz),plain(s.x+dx,s.z+dz),`ground moved at ${s.x.toFixed(1)},${s.z.toFixed(1)}`);
-  let risen=0,steep=0,wet=0,n=0;
+  let risen=0,steep=0,wet=0,n=0,hills=0;
   for(let x=-300;x<=300;x+=2.5)for(let z=-300;z<=300;z+=7.5){
-    const lift=height.lift(x,z);if(lift>1)risen++;if(lift&&t.river(x,z).edge<P.valley)wet++;
+    const lift=height.lift(x,z),hill=height.hill(x,z);if(lift>1)risen++;if(hill>2)hills++;if((lift||hill)&&t.river(x,z).edge<P.valley)wet++;
     if(t.river(x,z).edge>8){n++;if(Math.abs(height(x+1,z)-height(x,z))>.35||Math.abs(height(x,z+1)-height(x,z))>.35)steep++;}
   }
-  assert.ok(risen>500,`knolls stand somewhere (${risen} samples over 1 m)`);assert.equal(wet,0,'no knoll in a river valley');
+  assert.ok(risen>500,`knolls stand somewhere (${risen} samples over 1 m)`);assert.ok(hills>500,`rolling hills stand somewhere (${hills} samples over 2 m)`);
+  assert.equal(wet,0,'no knoll or hill in a river valley');
   assert.ok(n>5000);assert.equal(steep,0,'no slope steeper than 0.35 m per metre away from river banks');
 });
 

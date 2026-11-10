@@ -79,6 +79,20 @@ test('the Options chip names the options that are on, and hides when none is off
   assert.equal(chip.hidden, true, 'nothing to offer: no chip');
 });
 
+test('a Manage section in the popover keeps the Options chip when no toggle is offered (menu-chat-mailman.md)', () => {
+  const reply = option('Reply', false, true);
+  const {chip, menu, parts} = composerFixture([reply]);
+  const manage = new El('section');
+  manage.hidden = true;
+  menu.querySelector = selector => (selector === ':scope > .composer-manage' ? manage : null);
+  parts.paint();
+  assert.equal(chip.hidden, true, 'no toggle and no Manage rows: no chip');
+  manage.hidden = false;
+  parts.paint();
+  assert.equal(chip.hidden, false, 'Manage rows alone keep the chip');
+  assert.equal(chip.textContent, 'Options');
+});
+
 test('the goal, reply and ask toggles live in the Options popover, not in a row that appears on focus', () => {
   const menu = between('<div id="composer-options-menu"', '<label class="sr-only"');
   for (const id of ['goal-toggle', 'reply-as-answer']) assert.ok(menu.includes(`id="${id}"`), `${id} is inside the popover`);
@@ -155,7 +169,7 @@ test('a Demonstration reply says plainly that it did not read the request', () =
   assert.equal(demoReply({from: 'owner', to: 'mayor', text: '[Demonstration] typed by the owner'}), null, 'the owner’s own words are never marked');
   assert.equal(demoReply({from: 'mayor', to: 'owner', text: 'A real reply.'}), null);
   assert.equal(demoReply(null), null);
-  assert.match(app, /demo===null\?'':`<p class="demo-warning demo-reply-note">\$\{DEMO_REPLY_NOTE\}<\/p>`/);
+  assert.match(app, /demo!==null&&html`<p class="demo-warning demo-reply-note">\$\{DEMO_REPLY_NOTE\}<\/p>`/);
 });
 
 test('the diary names the cat of a delegated task the snapshot no longer lists, and never says "undefined"', () => {

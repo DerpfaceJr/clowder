@@ -1,15 +1,24 @@
-// The ☰ settings menu: a short list of categories, then one page per category.
-// Each category is a top-level .menu-page section of the menu body. A section added with registerSettingsSection
-// becomes a page too; its optional {icon, summary} drives its row in the list.
+// The ☰ settings menu: one flat list of device and app settings, then one page per row (docs/design/menu-chat-mailman.md).
+// Each row is a top-level .menu-page section of the menu body. A section added with registerSettingsSection becomes a page too;
+// its optional {icon, summary} drives its row. Only ROWS are listed: what a cat looks after lives with that cat (manage.js).
+// A page that is not a row (Town controls, Mayor's autonomy) opens straight from its own entry point with openSettingsPage, as can a row's page.
 // Under the list: the build this server runs (GET /api/state build), and a notice when newer code is on disk.
+// One name per thing it opens: the ☰ button is "Settings" and opens the list under that heading; a page opened on its own is headed by
+// its own name (the header's status dot says "town controls" and opens "Town controls"), and its close button says that name too.
 import {ago} from './quests-panel.js';
+import {icon as lucide} from './icons.js';
 
 const LAST_KEY = 'cat-town-settings-page';
-// List order for the built-in categories. Anything else follows in registration order.
-const ORDER = ['setup', 'appearance', 'town', 'autonomy', 'routines', 'memory', 'usage', 'sound', 'devices', 'screen'];
+/** The list's name: the dialog's heading, the ☰ button's accessible name (index.html) and the palette's row (command-palette.js). */
+export const MENU_NAME = 'Settings';
+/** The ☰ list, in order. Seven rows; nothing else is listed. */
+export const ROWS = Object.freeze(['appearance', 'sound', 'screen', 'devices', 'models', 'worlds', 'backup']);
+// A row whose page holds only this one control opens it at once (the host's Devices and AI models): a page of one button is a dead step.
+const DIRECT = {devices: 'share', models: 'models-open'};
 const registered = new Map();
 let menu = null;     // the ☰ dialog, once initSettingsNav has run
 let current = null;  // the open category's key, or null for the list
+let direct = false;  // true while a page was opened on its own (openSettingsPage): no Back, and Escape closes
 let build = null;    // the latest state's build, or null
 let buildBox = null; // the block under the list that shows it
 let buildKey = '';   // what buildBox shows now, so a refresh that changes nothing leaves it alone
@@ -59,29 +68,20 @@ function townNow() {
 }
 
 const BUILT_IN = {
-  appearance: {icon: '◐', summary: appearanceNow},
-  town: {icon: '⌂', summary: townNow},
-  devices: {icon: '▣', summary: () => 'Pairing, accounts and AI models'},
-  screen: {icon: '⛶', summary: () => (document.fullscreenElement ? 'Fullscreen on' : 'Fullscreen off')},
+  appearance: {summary: appearanceNow},
+  town: {summary: townNow},
+  devices: {summary: () => 'Pair a phone or tablet, or view on Wi-Fi'},
+  models: {summary: () => 'Choose the models your cats think with'},
+  screen: {summary: () => (document.fullscreenElement ? 'Fullscreen on' : 'Fullscreen off')},
 };
 
-// Rows whose icon, subtitle or badge this module owns. They override whatever was registered for the same id.
-let setupLine = {text: '', badge: 0};
+// Each row's Lucide icon (the index.html sprite), and the subtitles this module owns. They override what was registered for the same id.
+const ICONS = {appearance: 'palette', sound: 'volume-2', screen: 'maximize', devices: 'smartphone', models: 'sparkles', worlds: 'globe', backup: 'copy'};
 const EXTRA = {
-  setup: {icon: '✚', summary: () => setupLine.text || 'Brain, phone and apps', badge: () => setupLine.badge},
-  memorial: {icon: '☾', summary: () => 'The cats who retired, under the night sky'},
-  worlds: {icon: '◎', summary: () => `Active: ${document.getElementById('worlds-chip-name')?.textContent.trim() || 'this town'}`},
+  worlds: {summary: () => `Active: ${document.getElementById('worlds-chip-name')?.textContent.trim() || 'this town'}`},
 };
 
-function openMemorial() {
-  // The Memorial row goes straight to the memorial; its old one-button page is never shown.
-  if (window.openSurface) window.openSurface('memorial');
-  else document.getElementById('menu-memorial-open')?.click();
-}
-
-// The setup hub and its CSS load on first use, so the menu costs nothing until someone asks for them.
-const openSetup = () => import('./setup-hub.js').then(hub => hub.openSetupHub());
-
+// The setup hub's CSS loads with the menu, so the hub (opened from the Mayor's thread or the palette) never draws unstyled.
 function ensureSetupStyles() {
   if (document.querySelector('link[data-setup-hub]')) return;
   const link = document.createElement('link');
@@ -89,33 +89,6 @@ function ensureSetupStyles() {
   link.href = new URL('./setup-hub.css', import.meta.url).href;
   link.dataset.setupHub = '';
   document.head.append(link);
-}
-
-async function refreshSetup() {
-  try {
-    const {setupSummary} = await import('./setup-hub.js');
-    setupLine = (await setupSummary()) || {text: '', badge: 0};
-  } catch {
-    setupLine = {text: '', badge: 0};
-  }
-  apply();
-}
-
-// Memorial's section already exists in index.html; it gets an id here so it is registered as the row's page.
-function registerBuiltInRows() {
-  const memorial = document.getElementById('menu-memorial')?.closest('.menu-page');
-  if (memorial && !memorial.id) memorial.id = 'settings-memorial';
-  registerSettingsSection('memorial', 'Memorial', null, {action: openMemorial});
-  registerSettingsSection('setup', 'Set up Clowder', container => {
-    // Owner-only: viewers never see the row. Its action opens the hub directly, so this button is a fallback only.
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.id = 'setup-open';
-    open.setAttribute('data-owner', '');
-    open.textContent = 'Open setup';
-    open.addEventListener('click', openSetup);
-    container.append(open);
-  }, {action: openSetup});
 }
 
 // Lets other modules add a section to the ☰ settings menu. Built-in sections are already in index.html.
@@ -149,25 +122,34 @@ export function registerSettingsSection(id, title, render, {icon = '', summary =
 export function initSettingsNav(dialog) {
   menu = dialog;
   current = readLast();
-  registerBuiltInRows();
   ensureSetupStyles();
-  // Once per browser, and only when the brain is not ready (checked inside setup-hub.js). Waits for the first paint and intro.
+  // Once per browser, and only when the brain is not ready (checked inside setup-hub.js, which also waits for the welcome to end).
   setTimeout(() => void import('./setup-hub.js').then(hub => hub.autoOpenOnce()).catch(() => {}), 1500);
   menu.querySelector('#settings-back').addEventListener('click', () => go(null));
   menu.querySelector('#settings-list').addEventListener('click', e => {
     const row = e.target.closest('.menu-row');
     if (!row) return;
+    const key = row.dataset.category;
     // A row with an action (Worlds) opens its own screen directly instead of a menu page.
-    const action = registered.get(row.dataset.category)?.action;
+    const action = registered.get(key)?.action;
     if (typeof action === 'function') { menu.close?.(); action(); return; }
-    go(row.dataset.category);
+    // The host's Devices and AI models: the page would hold one button, so the row presses it.
+    const only = soleControl(key);
+    if (only) { menu.close?.(); only.click(); return; }
+    go(key);
   });
   menu.addEventListener('cancel', e => {
-    if (!activePage()) return;
+    if (!activePage() || direct) return;
     e.preventDefault();
     go(null);
   });
-  menu.addEventListener('close', () => writeLast(current));
+  menu.addEventListener('close', () => {
+    if (!direct) writeLast(current);
+    else current = readLast();
+    direct = false;
+    delete menu.dataset.over;
+    apply();
+  });
   // The running build sits under the list. app.js dispatches town-state on every refresh; a server without build info hides it.
   buildBox = make('div', 'settings-build');
   buildBox.id = 'settings-build';
@@ -200,7 +182,25 @@ function paintBuild() {
 export function refreshSettingsNav() {
   noteScreenLinks();
   apply();
-  void refreshSetup();
+}
+
+/**
+ * Opens the menu straight on one page, as a sheet of its own: Town controls from the header's status dot, the Mayor's autonomy and
+ * Backups from the chat. over 'thread' docks it over the chat pane from 900px (manage.css). No Back: Escape and × close it, and the
+ * list keeps the row it showed last. Returns false when the page is not there (a viewer's hidden section, say).
+ */
+export function openSettingsPage(key, {over = null} = {}) {
+  if (!menu) return false;
+  const page = pages().find(p => keyOf(p) === key);
+  if (!page || !hasControls(page)) return false;
+  noteScreenLinks();
+  direct = true;
+  current = key;
+  if (over) menu.dataset.over = over; else delete menu.dataset.over;
+  apply();
+  if (!menu.open) menu.showModal?.();
+  menu.querySelector('#town-menu-title')?.focus?.({preventScroll: true});
+  return true;
 }
 
 // The Screen & app links come from mobile-ui.js without a subtitle; the same data-note the buttons use gives them one.
@@ -214,20 +214,31 @@ function noteScreenLinks() {
 
 const keyOf = page => page.id.replace(/^settings-/, '');
 const pages = () => (menu ? [...menu.querySelectorAll(':scope > .menu-body > .menu-page')] : []);
-const sortedPages = () => pages().sort((a, b) => rank(keyOf(a)) - rank(keyOf(b)));
-const rank = key => (ORDER.includes(key) ? ORDER.indexOf(key) : ORDER.length);
+// The listed pages, in ROWS order. A registered page that is not a row stays out of the list.
+const rowPages = () => ROWS.map(key => pages().find(page => keyOf(page) === key)).filter(Boolean);
 const activePage = () => pages().find(page => keyOf(page) === current) || null;
-const metaOf = key => ({...(registered.get(key) || BUILT_IN[key] || {}), ...(EXTRA[key] || {})});
-const titleOf = page => page.querySelector(':scope > h3')?.textContent.trim() || 'Settings';
+const metaOf = key => ({...(BUILT_IN[key] || {}), ...(registered.get(key) || {}), ...(EXTRA[key] || {})});
+const titleOf = page => page.querySelector(':scope > h3')?.textContent.trim() || MENU_NAME;
+/** The close button's name: the list and its rows are "settings"; a page opened on its own closes under its own name. */
+export const closeLabel = (title, alone) => (alone && title ? `Close ${title}` : 'Close settings');
 
 // A page is listed only when something on it can be used. Owner-only controls hide themselves for viewers.
-function hasControls(page) {
-  return [...page.querySelectorAll('button, a[href], input, select, textarea')].some(el => {
+function usable(page) {
+  // A section that found its route closed hides itself (style.display none): nothing on it counts, even while every page is hidden.
+  if (page.style?.display === 'none') return [];
+  return [...page.querySelectorAll('button, a[href], input, select, textarea')].filter(el => {
     for (let node = el; node && node !== page; node = node.parentElement) {
       if (node.hidden || getComputedStyle(node).display === 'none') return false;
     }
     return true;
   });
+}
+const hasControls = page => usable(page).length > 0;
+
+// The one control a DIRECT row's page holds on this device, or null when it holds more (a paired phone's Passkey and Unpair) or another.
+function soleControl(key) {
+  const page = pages().find(p => keyOf(p) === key), only = page ? usable(page) : [];
+  return DIRECT[key] && only.length === 1 && only[0].id === DIRECT[key] ? only[0] : null;
 }
 
 function subtitleOf(key) {
@@ -248,17 +259,16 @@ function make(tag, className, ...children) {
 
 function renderList() {
   const rows = [];
-  for (const page of sortedPages()) {
+  for (const page of rowPages()) {
     if (!hasControls(page)) continue;
     const key = keyOf(page);
-    const icon = make('span', 'menu-row-icon', metaOf(key).icon || '◇');
+    const glyph = make('span', 'menu-row-icon', ICONS[key] ? lucide(ICONS[key], {size: 18}) : '◇');
     const sub = subtitleOf(key);
     const text = make('span', 'menu-row-text', make('span', 'menu-row-title', titleOf(page)), ...(sub ? [make('span', 'menu-row-sub', sub)] : []));
     const chevron = make('span', 'menu-row-chevron', '›');
-    icon.setAttribute('aria-hidden', 'true');
+    glyph.setAttribute('aria-hidden', 'true');
     chevron.setAttribute('aria-hidden', 'true');
-    const badge = Number(metaOf(key).badge?.()) || 0;
-    const row = make('button', 'menu-row', icon, text, ...(badge ? [make('span', 'menu-row-badge', `${badge} to set up`)] : []), chevron);
+    const row = make('button', 'menu-row', glyph, text, chevron);
     row.type = 'button';
     row.dataset.category = key;
     rows.push(row);
@@ -273,8 +283,9 @@ function apply() {
   for (const page of pages()) page.hidden = page !== active;
   renderList();
   menu.querySelector('#settings-list').hidden = !!active;
-  menu.querySelector('#settings-back').hidden = !active;
-  menu.querySelector('#town-menu-title').textContent = active ? titleOf(active) : 'Settings';
+  menu.querySelector('#settings-back').hidden = !active || direct;
+  menu.querySelector('#town-menu-title').textContent = active ? titleOf(active) : MENU_NAME;
+  menu.querySelector('.menu-tools > .close-x')?.setAttribute('aria-label', closeLabel(active ? titleOf(active) : '', direct));
   paintBuild();
 }
 
@@ -299,9 +310,11 @@ function go(key) {
   }
 }
 
+// Only a listed row comes back; a page opened on its own (Town controls, Mayor's autonomy) never does.
 function readLast() {
   try {
-    return sessionStorage.getItem(LAST_KEY) || null;
+    const key = sessionStorage.getItem(LAST_KEY);
+    return ROWS.includes(key) ? key : null;
   } catch {
     return null;
   }
@@ -309,7 +322,7 @@ function readLast() {
 
 function writeLast(key) {
   try {
-    if (key) sessionStorage.setItem(LAST_KEY, key);
+    if (key && ROWS.includes(key)) sessionStorage.setItem(LAST_KEY, key);
     else sessionStorage.removeItem(LAST_KEY);
   } catch {
     // Blocked storage: the menu still opens on the list.

@@ -1,14 +1,16 @@
-import {oneLiner} from '../public/hologram.js';
+import {oneLiner} from '../public/one-liner.js';
 import type {Cat, Event, State} from './store.ts';
 
 /** A cat as the Projects panel shows it: name plus the avatar colour and icon. */
 export type CatRef = {id:string; name:string; icon:string; color:string};
-export type ProjectStatus = 'queued' | 'running' | 'waiting for you' | 'done' | 'failed' | 'stopped';
+export type ProjectStatus = 'queued' | 'running' | 'waiting for you' | 'done' | 'failed' | 'stopped' | 'interrupted';
 export type Project = {
   /** The root task of one owner request. Every root is an owner request, so there is no separate upkeep project. */
   id:string;
   title:string;
   status:ProjectStatus;
+  /** The root's result when it was interrupted (why it stopped), else null. */
+  reason:string|null;
   startedAt:string|null;
   updatedAt:string|null;
   group:{id:string; name:string; lead:string; members:CatRef[]; site:{x:number; z:number}} | null;
@@ -84,13 +86,16 @@ export function projects(state:State):Project[]{
     }
     // A goal-removal suggestion is reviewed in the Projects panel's Review strip, not as a decision on this request.
     const pendingApprovals=state.approvals.filter(a=>a.status==='pending'&&a.gate!=='goal-removal'&&rootId(a.task)===root.id).map(a=>({id:a.id,question:a.question,cat:a.cat}));
-    // Overall status: a pending decision outranks everything; otherwise the root task decides. A failed child
-    // under a root that finished still reads done, because the Mayor recovered; the failure shows in counts.
+    // Overall status: a pending decision outranks everything; otherwise the request's newest owner turn decides: the root, or its latest
+    // follow-up or Retry (plan 11.1, a child the owner sent), so a request retried to done reads done, not interrupted. Trees keep journal
+    // order. A failed child the Mayor recovered from under a finished turn still reads done; the failure shows in counts.
+    const head=tree.filter(t=>t.parent===root.id&&t.from==='owner').at(-1)??root;
     const status:ProjectStatus=pendingApprovals.length?'waiting for you'
-      :root.status==='queued'?'queued'
-      :root.status==='done'?'done'
-      :root.status==='failed'?'failed'
-      :['cancelled','interrupted'].includes(root.status)?'stopped'
+      :head.status==='queued'?'queued'
+      :head.status==='done'?'done'
+      :head.status==='failed'?'failed'
+      :head.status==='interrupted'?'interrupted'
+      :head.status==='cancelled'?'stopped'
       :'running';
     const group=state.groups.find(g=>g.rootTask===root.id)??null;
     const members=group?state.cats.filter(c=>c.group===group.id).map(c=>ref(c.id)):[];
@@ -100,6 +105,7 @@ export function projects(state:State):Project[]{
       id:root.id,
       title:oneLiner(root.text,60)||'Untitled request',
       status,
+      reason:status==='interrupted'?root.result??null:null,
       startedAt:startedAt.get(root.id)??null,
       updatedAt:updatedAt.get(root.id)??startedAt.get(root.id)??null,
       group:group?{id:group.id,name:group.name,lead:group.lead,members,site:{x:group.site.x,z:group.site.z}}:null,

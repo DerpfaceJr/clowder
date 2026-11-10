@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  statusTone, progressPercent, countsLine, usageLine, stamp, siteFocus, nameFor, waitingLabel, snapshotKey, createProjectsPanel,
+  statusTone, statusLabel, canRetry, progressPercent, countsLine, usageLine, stamp, siteFocus, nameFor, waitingLabel, snapshotKey, createProjectsPanel,
 } from '../public/projects-panel.js';
 
 test('every server status maps to a tone, and an unknown status stays quiet', () => {
@@ -67,6 +67,111 @@ test('the snapshot key changes only when the data changes', () => {
   assert.notEqual(snapshotKey(a), snapshotKey([{id: 'R1', status: 'done'}]));
 });
 
-test('the panel factory is exported; its DOM is not exercised here (no DOM in Node)', () => {
+test('the panel factory is exported', () => {
   assert.equal(typeof createProjectsPanel, 'function');
+});
+
+// Plan 11.13 (F3, F7): Interrupted is its own label with its reason, failed and interrupted requests get Retry, and a load with no
+// answer reads in plain words.
+test('Interrupted is its own word and reads as broken, not as the owner\'s Stop', () => {
+  assert.equal(statusLabel('interrupted'), 'Interrupted');
+  assert.equal(statusLabel('stopped'), 'Stopped');
+  assert.equal(statusLabel('failed'), 'Failed');
+  assert.equal(statusLabel('waiting for you'), 'Waiting for you');
+  assert.equal(statusLabel('something new'), 'something new');
+  assert.equal(statusTone('interrupted'), 'failed');
+});
+
+test('Retry is offered for a failed or interrupted request with nothing of it still running', () => {
+  const counts = (running = 0, waiting = 0) => ({tasks: 2, done: 0, running, waiting, failed: 0});
+  assert.equal(canRetry({status: 'interrupted', counts: counts()}), true);
+  assert.equal(canRetry({status: 'failed', counts: counts()}), true);
+  assert.equal(canRetry({status: 'interrupted', counts: counts(1)}), false, 'a retry is running');
+  assert.equal(canRetry({status: 'failed', counts: counts(0, 1)}), false);
+  for (const status of ['done', 'stopped', 'running', 'queued', 'waiting for you']) assert.equal(canRetry({status, counts: counts()}), false, status);
+});
+
+// A small stand-in for the browser DOM: enough for the panel to build its cards in Node.
+class FakeNode {
+  constructor(tag, doc) {
+    const style = {setProperty: (k, v) => { style[k] = v; }};
+    Object.assign(this, {tagName: tag.toUpperCase(), ownerDocument: doc, children: [], attributes: {}, listeners: {}, style, className: '', hidden: false, open: false, disabled: false, ownText: '', dataset: {}});
+  }
+  get textContent() { return this.ownText + this.children.map(c => c.textContent).join(''); }
+  set textContent(v) { this.ownText = String(v); this.children = []; }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = [...nodes]; }
+  setAttribute(k, v) { this.attributes[k] = String(v); }
+  getAttribute(k) { return this.attributes[k] ?? null; }
+  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  click() { this.onclick?.({type: 'click'}); }
+  all() { return this.children.flatMap(c => [c, ...c.all()]); }
+}
+const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
+const AT = '2026-11-09T12:00:00.000Z', LATER = '2026-11-09T12:05:00.000Z';
+const REASON = 'Server restarted during work. Send a new message to retry.';
+const request = (extra = {}) => ({id: 'R1', title: 'Draft three names for a cat cafe', status: 'interrupted', reason: REASON, startedAt: AT, updatedAt: LATER, group: null, lead: 'mayor',
+  cats: [{id: 'mayor', name: 'Mayor', icon: '', color: '#8c8a7d'}], counts: {tasks: 1, done: 0, running: 0, waiting: 0, failed: 0}, progress: 1, pendingApprovals: [], lastMessage: null,
+  usage: {input: null, output: null}, ...extra});
+
+function mount({owner = true, projects = [request()], down = false} = {}) {
+  const doc = {querySelector: () => null};
+  doc.createElement = tag => new FakeNode(tag, doc);
+  doc.createTextNode = text => Object.assign(new FakeNode('#text', doc), {ownText: String(text)});
+  doc.head = doc.createElement('head');
+  globalThis.document = doc;
+  const server = {projects, acted: []};
+  const answer = body => ({ok: true, status: 200, json: async () => body});
+  const fetchImpl = async url => {
+    if (down) throw new TypeError('Failed to fetch');
+    if (url === '/api/projects') return answer(server.projects);
+    if (url === '/api/goals') return answer({owner, goals: [], reviews: [], week: {tokens: null}});
+    return answer({artifacts: []});
+  };
+  const act = async (path, body) => { server.acted.push([path, body]); server.projects = [request({counts: {tasks: 2, done: 0, running: 1, waiting: 0, failed: 0}})]; return {task: 'R2'}; };
+  const body = doc.createElement('div'), status = doc.createElement('p');
+  status.hidden = true;
+  const panel = createProjectsPanel({panel: {hidden: false}, body, status, fetchImpl, act});
+  const find = (tag, text) => body.all().filter(n => n.tagName === tag && (text === undefined || n.textContent === text));
+  return {panel, body, status, server, find};
+}
+
+test('an interrupted request shows Interrupted, its reason and Retry; Retry posts once and is gone while the retry runs', async () => {
+  const {panel, server, find, body} = mount();
+  await panel.refresh();
+  const card = find('ARTICLE')[0];
+  assert.equal(card.getAttribute('data-status'), 'interrupted');
+  const chip = card.all().find(n => n.className === 'status-chip');
+  assert.equal(chip.textContent, 'Interrupted');
+  assert.equal(chip.getAttribute('data-tone'), 'failed');
+  assert.equal(card.all().find(n => n.className.includes('request-reason')).textContent, REASON);
+  const [retry] = find('BUTTON', 'Retry');
+  assert.ok(retry, 'Retry is on the card');
+  retry.click();
+  retry.click();
+  await settle();
+  assert.deepEqual(server.acted, [['tasks/R1/retry', {}]], 'two taps, one retry');
+  assert.equal(find('BUTTON', 'Retry').length, 0, 'no Retry while the retry runs');
+  assert.ok(body.all().some(n => n.className === 'project-counts' && n.textContent.includes('1 running')));
+});
+
+test('a failed request gets Retry too; a device that is not the owner\'s gets none', async () => {
+  const failed = mount({projects: [request({status: 'failed', reason: null})]});
+  await failed.panel.refresh();
+  assert.equal(failed.find('BUTTON', 'Retry').length, 1);
+  assert.equal(failed.body.all().filter(n => n.className.includes('request-reason')).length, 0, 'only an interrupted request carries a reason');
+  const viewer = mount({owner: false});
+  await viewer.panel.refresh();
+  assert.equal(viewer.find('BUTTON', 'Retry').length, 0);
+  const done = mount({projects: [request({status: 'done', reason: null})]});
+  await done.panel.refresh();
+  assert.equal(done.find('BUTTON', 'Retry').length, 0);
+});
+
+test('with the server stopped, the panel says so in plain words, not "Failed to fetch"', async () => {
+  const {panel, status} = mount({down: true});
+  await panel.refresh();
+  assert.equal(status.hidden, false);
+  assert.equal(status.textContent, 'Projects could not load. Clowder is not answering. The list comes back when it does.');
+  assert.doesNotMatch(status.textContent, /fetch/i);
 });

@@ -11,6 +11,7 @@ import {Town} from '../src/engine.ts';
 import type {Provider} from '../src/provider.ts';
 import type {ConnectorRuntime} from '../src/connector-types.ts';
 import type {AutonomyLevel} from '../src/autonomy.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const SEARCH='mcp__fake__search';
@@ -39,7 +40,7 @@ function fake(o:{permission?:'allow'|'ask';result?:string|(()=>Promise<string>);
   return rt;
 }
 const PLUGINS=[{id:'marketplace:official/postiz',name:'postiz',description:'Schedule social posts',from:'Claude plugins (official)',installed:false},{id:'skill:ig-reel',name:'ig-reel',description:'Write a reel',from:'skills on this computer',installed:true}];
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(10);
 function fixture(providers:Record<string,Provider>,connectors:ConnectorRuntime|null=null,autonomy:AutonomyLevel='balanced',file=join(mkdtempSync(join(tmpdir(),'engine-connectors-')),'events.jsonl')){
   const store=new Store(file,allRoles(config));
   const town=new Town(store,config,providers);town.autonomy=()=>autonomy;town.connectors=()=>connectors;

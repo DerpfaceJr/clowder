@@ -179,6 +179,20 @@ test('integrity: a changed, truncated, swapped or missing file is refused with t
   assert.throws(()=>restoreBackup(folder,key,ok),/empty folder/);
 });
 
+test('a blob damaged without a change of size is found within one turn of the checks, and its file is written whole again',async()=>{
+  const {data,folder,backups,key}=await town(undefined);
+  await backups.run();
+  const first=openBackup(folder,key).manifest(1),held=first.files.flatMap(f=>f.parts).length+(first.secrets?1:0);
+  const seg=join(folder,'blobs',first.files.find(f=>f.path==='events.jsonl')!.parts[0]!.blob),bytes=readFileSync(seg);
+  bytes[bytes.length-20]^=1;writeFileSync(seg,bytes);
+  assert.throws(()=>restoreBackup(folder,key,fresh()),/damaged|does not match/,'the newest point no longer restores');
+  // Under 24 blobs each run opens one, so every blob has had its turn after as many runs as there are blobs.
+  assert.ok(held<24);
+  for(let i=0;i<held;i++)await backups.run();
+  const out=fresh();restoreBackup(folder,key,out);
+  assert.equal(readFileSync(join(out,'events.jsonl'),'utf8'),readFileSync(join(data,'events.jsonl'),'utf8'),'the newest point restores again');
+});
+
 test('an interrupted run leaves the last good point whole, and the next run finishes from it',async()=>{
   const {data,folder,backups,key}=await town(undefined);
   await backups.run();

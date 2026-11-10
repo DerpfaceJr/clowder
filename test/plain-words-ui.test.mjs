@@ -51,7 +51,7 @@ test('one "needs you" count: the badge, its label and the Projects summary show 
   assert.equal(n, splitNeeds(list).needs.length);
   assert.equal(badgeLabel(n), '3 things need you');
   assert.equal(needsYouLabel(1), '1 thing needs you');
-  const needsTile = summaryTiles({goals: [], goalsKnown: true, needsYou: n, week: null, artifacts: [], now: new Date()}).find(t => t.label === 'Needs you');
+  const needsTile = summaryTiles({goals: [], goalsKnown: true, needsYou: n, week: null, artifacts: [], now: new Date()}).find(t => t.label === 'Inbox');
   assert.equal(needsTile.value, String(n));
   // The goal groups count goals in words, so their number never reads as a second "needs you" count.
   assert.equal(SECTION_TITLES.waiting, 'Waiting for you');
@@ -62,7 +62,7 @@ test('one "needs you" count: the badge, its label and the Projects summary show 
 
 test('app.js feeds the same number to the dock badge, the Mayor’s notice, the town’s marker and the Projects summary', () => {
   const app = read('app.js');
-  assert.match(app, /onCount:n=>\{const changed=n!==questCount;questCount=n;questAlert=n>0;scene\?\.setAttention\(questAlert\);paintQuestNotice\(\);if\(changed\)void projectsPanel\.refresh\(\);\}/);
+  assert.match(app, /onCount:n=>\{const changed=n!==questCount;questCount=n;questAlert=n>0;scene\?\.setAttention\(questAlert\);paintQuestNotice\(\);if\(changed\)void projectsPanel\.refresh\(\);dispatchEvent\(new CustomEvent\('quest-list',\{detail:questList\}\)\);openWantedLink\(\);\}/, 'and the list reaches notify.js, which retries a waiting #item= link (plan 11.20)');
   assert.match(app, /needsYou:\(\)=>questCount\}/);
   assert.match(app, /text:`\$\{badgeLabel\(questCount\)\} ›`/);
   const panel = read('quests-panel.js');
@@ -130,10 +130,11 @@ test('cards say what they are in plain words, headings carry no letters, and the
     assert.equal(cards[1].querySelector('.quest-title').textContent, 'Connect GitHub', 'the kind line says To-do, so the title does not');
     assert.equal(cards[2].querySelector('.quest-title').textContent, 'Goal done: Launch the shop');
     assert.equal(cards[2].querySelector('.quest-summary').textContent, 'Done.');
-    assert.deepEqual(body.querySelectorAll('h3.rank-heading').map(h => h.textContent), ['Decisions', 'Needs you to act']);
+    assert.deepEqual(body.querySelectorAll('h3.rank-heading').map(h => h.textContent), ['Needs you'], 'one band for what the badge counts (plan 11.16)');
+    assert.equal(body.querySelector('.quest-tabs').getAttribute('aria-label'), 'Inbox', 'the Active and Done tabs name the panel the dock calls Inbox');
     assert.equal(badge.textContent, '2');
     assert.equal(badge.getAttribute('aria-label'), '2 things need you');
     assert.deepEqual(counts, [2], 'the panel reports the same number it shows');
-    assert.equal(body.querySelectorAll('ul.quest-list')[0].children.length + body.querySelectorAll('ul.quest-list')[1].children.length, 2, 'two cards above the fold');
+    assert.equal(body.querySelectorAll('ul.quest-list')[0].children.length, 2, 'two cards above the fold, in the one Needs you band');
   } finally { restore(); }
 });

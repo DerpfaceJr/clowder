@@ -1,5 +1,6 @@
-// Settings menu section for the Mayor's autonomy level. Owner only: the route answers 403 to viewers, paired
-// devices and LAN devices, and the section hides itself when that happens.
+// The Mayor's autonomy level: a page of the settings menu that is not one of its rows. The Mayor's corner (its Autonomy chip),
+// Options > Manage, /autonomy and the palette open it on its own, over the thread (settings-menu.js openSettingsPage). Owner only:
+// the route answers 403 to viewers, paired devices and LAN devices, and the section hides itself when that happens.
 import {registerSettingsSection} from './settings-menu.js';
 
 const LEVELS = [

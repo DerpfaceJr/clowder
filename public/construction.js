@@ -77,7 +77,7 @@ export class ConstructionPlan{
 
 // Wall top as a fraction of each house's art height (makeHouse): the walls rise to it, the roof drops onto it.
 // ponytail: per-style constants read off makeHouse; a new house style falls back to the default.
-const ROOF_FROM={mayor:.4,scholar:.55,banker:.49,merchant:.57,archivist:.6,builder:.51,critic:.46,operator:.38};
+const ROOF_FROM={mayor:.4,scholar:.55,banker:.49,merchant:.57,archivist:.6,builder:.51,critic:.46,operator:.38,mailman:.46};
 const DROP=2.4,WORK_GAP=2,SPARKS=64,DUST=24,HALF_X=1.6,HALF_Z=1.45,SCAFFOLD=20;
 const hash=(n,k)=>{const v=Math.sin(n*127.1+k*311.7)*43758.5453;return v-Math.floor(v);};
 
@@ -149,7 +149,7 @@ export function createConstruction({scene,renderer,reduced,residents,world,walkS
     // Waits until the Builder is awake and not on a message visit, then sets off.
     if(trip.phase==='idle'){if(plan.queue.length&&!(b.rest.amount>0)&&!inVisit(builderId))nextTrip();return;}
     if(trip.phase==='site'||trip.phase==='home'){
-      trip.d=Math.min(trip.stop,trip.d+walkSpeed*dt);trip.at=trip.path.at(trip.d);
+      trip.d=Math.min(trip.stop,trip.d+walkSpeed*dt*trip.path.pace(trip.d));trip.at=trip.path.at(trip.d);
       if(trip.d<trip.stop)return;
       if(trip.phase==='home'){Object.assign(trip,{phase:'idle',at:null});return;}
       const job=plan.jobs.get(trip.job);if(job?.phase==='queued'){job.phase='building';trip.phase='work';}else nextTrip();

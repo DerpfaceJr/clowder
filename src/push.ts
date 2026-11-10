@@ -3,15 +3,21 @@ import {existsSync,mkdirSync,readFileSync,renameSync,writeFileSync} from 'node:f
 import {resolve} from 'node:path';
 import {stripSecrets,withSecrets,withoutSecrets} from './secret-store.ts';
 import type {FastifyInstance,FastifyReply,FastifyRequest} from 'fastify';
+import {quests,type Quest,type QuestInput} from './quests.ts';
+import {verbsFor,type Verb} from './owner-verbs.ts';
+import type {State} from './store.ts';
 
 // Web Push (RFC 8291 aes128gcm body, RFC 8292 VAPID) written against node:crypto. The web-push package is MPL-2.0, not MIT, so it is not used.
-export type Prefs={approvals:boolean;mayor:boolean;seasons:boolean;routines:boolean};
+// problems: a trouble item (a failed or stopped request, quests() band 'trouble'). On by default (11.10).
+export type Prefs={approvals:boolean;mayor:boolean;seasons:boolean;routines:boolean;problems:boolean};
 // device: the paired device id, or 'host'. Subscriptions saved before devices were recorded have none and are kept.
 export type Subscription={endpoint:string;keys:{p256dh:string;auth:string};kinds:Prefs;createdAt:string;device?:string};
 // approval and actions: answer buttons (plan 3.4), only on a notice whose decision quickActions allows.
+// item and verbs: the owner verbs (11.25, owner-verbs.ts) on a notice with no answer buttons; the tap posts /api/quests/<item>/verb.
 export type QuickAction={answer:string;approved:boolean};
-export type Payload={title:string;body:string;url:string;tag:string;approval?:string;actions?:{action:string;title:string;answer:string;approved:boolean}[]};
-export type Item={title:string;body:string;url?:string;tag:string;approval?:string;actions?:QuickAction[]};
+export type PayloadAction={action:string;title:string;answer?:string;approved?:boolean;verb?:Verb};
+export type Payload={title:string;body:string;url:string;tag:string;approval?:string;item?:string;actions?:PayloadAction[]};
+export type Item={title:string;body:string;url?:string;tag:string;approval?:string;actions?:QuickAction[];item?:string;verbs?:{verb:Verb;label:string}[]};
 export type Sender=(endpoint:string,headers:Record<string,string>,body:Buffer)=>Promise<number>;
 export type PushSource={state:{events:{id:string;type:string;data:any}[];cats:{id:string;name?:string}[];tasks?:{id:string;routine?:string}[]};listeners:Set<()=>void>};
 
@@ -94,14 +100,16 @@ const safePath=(url:unknown)=>typeof url==='string'&&url.length<=200&&/^\/(?!\/)
 /** The only shape a push carries: title, body, a same-origin path and a tag, plus a decision's id and answer buttons. No secrets. */
 export function buildPayload(item:Item,more=0):Payload{
   const suffix=more>0?` (+${more} more)`:'';
-  // A coalesced notice stands in for decisions the owner has not read, so it never carries buttons. Push shows at most two.
+  // A coalesced notice stands in for items the owner has not read, so it never carries buttons. Push shows at most two.
   const actions=more===0&&item.approval&&item.actions?.length&&item.actions.length<=2?item.actions:null;
+  const verbs=more===0&&!actions&&item.item&&item.verbs?.length&&item.verbs.length<=2?item.verbs:null;
   return {
     title:clean(item.title,80)||'Clowder',
     body:clean(`${item.body}${suffix}`,240),
     url:safePath(item.url),
     tag:clean(item.tag,80).replace(/[^A-Za-z0-9_.:-]/g,'_')||'clowder',
     ...(actions?{approval:item.approval,actions:actions.map((a,i)=>({action:String(i),title:clean(a.answer,40),answer:a.answer,approved:a.approved}))}:{}),
+    ...(verbs?{item:item.item,actions:verbs.map((v,i)=>({action:String(i),title:clean(v.label,40),verb:v.verb}))}:{}),
   };
 }
 
@@ -125,6 +133,17 @@ export function noticeOf(event:{type:string;data:any},cats:{id:string;name?:stri
   }
   if(event.type==='owner.step')return {title:'Clowder',body:`${cat} needs you to: ${clean(d.title,120)}`,text:`${cat} needs you to: ${clean(d.title,300)}\n\n${String(d.steps??'').split('\n').map(line=>clean(line,300)).join('\n').slice(0,2000)}`.trim(),url:'/',tag:`step-${d.id}`};
   return null;
+}
+
+/** The push notice for one Needs-you or trouble item (11.10). Answer buttons only where quickActions allows them on the decision's own record;
+ *  otherwise the owner verbs the item offers (11.25: Mark done, Remind me tomorrow, Retry), so a purchase has none. */
+export function questNotice(q:Quest,approvals:({id:string}&Parameters<typeof quickActions>[0])[]=[]):Item{
+  const url=`/#item=${encodeURIComponent(q.id)}`,tag=`item-${q.id}`;
+  const verbs=verbsFor(q).map(({verb,label})=>({verb,label})),withVerbs=verbs.length?{item:q.id,verbs}:{};
+  if(q.band==='trouble')return {title:'Clowder',body:`Your request '${q.title}' failed: ${q.detail.replace(/[.\s]+$/,'')}. Retry?`,url,tag,...withVerbs};
+  const record=q.source.kind==='approval'?approvals.find(a=>a.id===q.source.id):undefined;
+  const actions=record?quickActions(record):[];
+  return {title:'Clowder',body:`Needs you: ${q.title}`,url,tag,...(actions.length?{approval:String(record!.id),actions}:withVerbs)};
 }
 
 /** At most one delivery per window and key. Items arriving inside the window are coalesced into the next delivery, which reports how many it stands in for. */
@@ -173,14 +192,37 @@ export const defaultSender:Sender=async(endpoint,headers,body)=>{
   return res.status;
 };
 
+// questInput: the quests() input for this store. The default reads the store only; the host passes its full input (projects, purchases...).
 export type PushOptions={dataDir:string;send?:Sender;now?:()=>number;windowMs?:number;
-  later?:(fn:()=>void,ms:number)=>unknown;stopTimer?:(timer:any)=>void;subject?:string};
+  later?:(fn:()=>void,ms:number)=>unknown;stopTimer?:(timer:any)=>void;subject?:string;questInput?:(state:State)=>QuestInput};
 
-const normalizePrefs=(raw:any):Prefs=>({approvals:raw?.approvals!==false,mayor:raw?.mayor!==false,seasons:raw?.seasons!==false,routines:raw?.routines!==false});
+/** The quests() input from the store alone. The host passes its full input (projects, purchases, capabilities) through questInput. */
+export const storeQuestInput=(state:State):QuestInput=>({state,projects:[],capabilities:[],seasons:[],models:null,now:new Date()});
+
+/** Which Needs-you and trouble ids are new since the last look (11.10). Push, Telegram and Discord each keep one, so each announces each id once. */
+export class ListAnnouncer{
+  private listed?:Set<string>;
+  constructor(private input:(state:State)=>QuestInput){}
+  private items(state:State):Quest[]{
+    // A state with no approvals array lists no decisions, rather than throwing.
+    const s=Array.isArray(state.approvals)?state:{...state,approvals:[]};
+    return quests(this.input(s)).filter(q=>q.band==='needs'||q.band==='trouble');
+  }
+  /** Records the current list as known, so a restart announces nothing that is already listed. */
+  baseline(state:State){this.listed=new Set(this.items(state).map(q=>q.id));}
+  fresh(state:State):Quest[]{
+    const now=this.items(state),before=this.listed??new Set<string>();
+    this.listed=new Set(now.map(q=>q.id));
+    return now.filter(q=>!before.has(q.id));
+  }
+}
+
+const normalizePrefs=(raw:any):Prefs=>({approvals:raw?.approvals!==false,mayor:raw?.mayor!==false,seasons:raw?.seasons!==false,routines:raw?.routines!==false,problems:raw?.problems!==false});
 
 export class PushService{
   // The private key lives only in this object. Nothing on the class returns it.
   private readonly vapid:Vapid;
+  private readonly announcer:ListAnnouncer;
   private subs:Subscription[]=[];
   private readonly subsFile:string;
   private readonly limiter:RateLimiter<Item>;
@@ -197,6 +239,7 @@ export class PushService{
       this.subs=data;
     }
     this.send=opts.send??defaultSender;
+    this.announcer=new ListAnnouncer(opts.questInput??storeQuestInput);
     this.limiter=new RateLimiter<Item>(opts.windowMs??DEFAULT_WINDOW_MS,(kind,item,more)=>{void this.fanOut(kind as keyof Prefs|'test',buildPayload(item,more));},
       opts.now??Date.now,opts.later,opts.stopTimer);
   }
@@ -255,14 +298,14 @@ export class PushService{
     }
     if(gone.length){this.subs=this.subs.filter(s=>!gone.includes(s.endpoint));this.save();}
   }
-  /** Hooks the store. Listeners receive no arguments, so the newest event is read from the state. */
-  attach(store:PushSource){store.listeners.add(()=>this.onStore(store));}
+  /** Hooks the store. The baseline is the list at attach time, so a restart announces nothing that was already listed. */
+  attach(store:PushSource){this.announcer.baseline(store.state as State);store.listeners.add(()=>this.onStore(store));}
   onStore(store:PushSource){
+    // 11.10: each Needs-you id, and each trouble id, once. An id that leaves the list and comes back is announced again.
+    for(const q of this.announcer.fresh(store.state as State))this.notify(q.band==='trouble'?'problems':'approvals',questNotice(q,(store.state as State).approvals??[]));
     const event=store.state.events.at(-1);
     if(!event||event.id===this.lastEventId)return;
     this.lastEventId=event.id;
-    const notice=noticeOf(event,store.state.cats);
-    if(notice)this.notify('approvals',notice);
     // A briefing routine's finished run: one push per run, under the owner's routines setting.
     if(event.type==='routine.briefed')this.notify('routines',{title:'Daily briefing',body:String(event.data.line??''),url:'/',tag:`briefing-${event.data.task}`});
     // A routine run's replies are not pushed as Mayor messages: a briefing pushes its first line once, and the other routines push nothing per turn.
@@ -286,7 +329,7 @@ export class PushService{
 const subscriptionSchema={type:'object',required:['endpoint','keys'],additionalProperties:false,properties:{
   endpoint:{type:'string',minLength:1,maxLength:2048},
   keys:{type:'object',required:['p256dh','auth'],additionalProperties:false,properties:{p256dh:{type:'string',maxLength:200},auth:{type:'string',maxLength:64}}},
-  kinds:{type:'object',additionalProperties:false,properties:{approvals:{type:'boolean'},mayor:{type:'boolean'},seasons:{type:'boolean'},routines:{type:'boolean'}}},
+  kinds:{type:'object',additionalProperties:false,properties:{approvals:{type:'boolean'},mayor:{type:'boolean'},seasons:{type:'boolean'},routines:{type:'boolean'},problems:{type:'boolean'}}},
 }};
 
 /** Owner on the main app, paired owner device on the remote app. Anyone else gets 403 before the handler runs. device: who subscribes, so revoking it removes its endpoints. */

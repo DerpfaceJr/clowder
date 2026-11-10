@@ -4,7 +4,8 @@ import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {codexPlanProvider} from '../src/codex-plan.ts';
-import {CLI_ENV} from '../src/claude-plan.ts';
+import {CLI_ENV, removeCallDir} from '../src/claude-plan.ts';
+import {spawn} from 'node:child_process';
 // The fake CLIs read these; a real CLI run gets only CLI_ENV from this process's environment (security pass M3).
 CLI_ENV.push('CAT_FAKE_LOG', 'CAT_FAKE_MODE');
 
@@ -115,6 +116,19 @@ test('an action outside the listed tools is rejected and not fatal', async()=>{
   await withEnv({CAT_FAKE_MODE:'unknown'},async()=>{
     await assert.rejects(provider()(messages,tools,new AbortController().signal),(e:any)=>e.fatal!==true&&/unknown action/.test(e.message));
   });
+});
+
+test('cleanup removes a call folder, and never throws while a process still holds it', async()=>{
+  const gone=mkdtempSync(join(dir,'gone-'));writeFileSync(join(gone,'a.json'),'{}');
+  removeCallDir(gone);assert.equal(existsSync(gone),false);
+  removeCallDir(join(dir,'never-made'));
+  // A live process whose working directory is the folder: Windows refuses to remove it (EBUSY), other systems remove it. Either way no throw,
+  // so a cleanup in a finally can never replace the call's own error.
+  const held=mkdtempSync(join(dir,'held-')),child=spawn(process.execPath,['-e','setTimeout(()=>{},10000)'],{cwd:held,stdio:'ignore',windowsHide:true});
+  await new Promise(r=>child.once('spawn',r));
+  try{assert.doesNotThrow(()=>removeCallDir(held));}
+  finally{const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}
+  removeCallDir(held);assert.equal(existsSync(held),false,'gone once nothing holds it');
 });
 
 test('a call that exceeds the timeout rejects, and the per-call directory is removed', async()=>{

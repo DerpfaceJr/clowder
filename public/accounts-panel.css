@@ -19,7 +19,7 @@
 #accounts-dialog .ac-secrets.warn{color:var(--ink);padding-left:8px;border-left:3px solid var(--line)}
 .ac-section{min-width:0}
 #accounts-dialog .ac-hint{margin:0;font-size:13px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}
-#accounts-dialog .ac-sub{margin:4px 0 0;font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+#accounts-dialog .ac-sub{margin:4px 0 0;font-size:var(--text-xs);font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
 .ac-services,.ac-accounts,.ac-models{display:grid;gap:10px;margin:0;padding:0;list-style:none;min-width:0}
 .ac-service{gap:10px}
 .ac-service-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}

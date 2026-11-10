@@ -21,7 +21,7 @@
 #routines-dialog .cx-note{margin:0;font-size:13px}
 .rt-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0}
 .rt-facts>div{min-width:0;padding:8px 10px;border:0;border-radius:var(--r-sm);background:var(--paper-2)}
-.rt-facts dt{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.rt-facts dt{font-size:var(--text-xs);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .rt-facts dd{margin:2px 0 0;font:600 14px/1.3 var(--font-ui);color:var(--ink);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .rt-actions{display:flex;flex-wrap:wrap;gap:8px}
 #routines-dialog .rt-actions button{font-size:14px}

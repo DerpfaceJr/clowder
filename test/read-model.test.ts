@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync, writeFileSync, existsSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Store} from '../src/store.ts';
@@ -25,7 +25,8 @@ function fill(store: Store, n = 30) {
 test('deleting the database rebuilds it from the journal with the same row counts as a replay', () => {
   const w = world(), store = new Store(w.file, cats, {readModel: w.db});
   fill(store); store.readModel!.flush();
-  const expected = {messages: store.state.messages.length, tasks: store.state.tasks.length, search: store.state.messages.length + store.state.events.filter(e => e.type === 'memory.noted').length};
+  // Search rows: messages, memory notes, and each root task that has a result (fill() gives every fourth task one).
+  const expected = {messages: store.state.messages.length, tasks: store.state.tasks.length, search: store.state.messages.length + store.state.events.filter(e => e.type === 'memory.noted').length + store.state.tasks.filter(t => !t.parent && t.result).length};
   assert.deepEqual(store.readModel!.counts(), expected);
   rmSync(w.db);
   const again = new Store(w.file, [], {readModel: w.db});
@@ -102,6 +103,71 @@ test('full-text search finds a message and a memory note by a word', () => {
   // FTS5 query syntax in the owner's words cannot break the search.
   assert.deepEqual(store.readModel!.search('"bread" OR (*'), store.readModel!.search('bread OR'));
   assert.deepEqual(store.readModel!.search('!!!'), []);
+  rmSync(w.dir, {recursive: true});
+});
+
+const ART_TEXT = '11111111-1111-4111-8111-111111111111', ART_IMAGE = '22222222-2222-4222-8222-222222222222';
+// Two artifacts (a saved page and a picture), a root request with a result, and a child task whose result must not be indexed.
+function artifacts(store: Store, dir: string) {
+  mkdirSync(dir, {recursive: true});
+  writeFileSync(join(dir, `${ART_TEXT}.html`), '<html><style>.zebra{}</style><body><h1>Lighthouse plan</h1><p>Tide tables</p></body></html>');
+  writeFileSync(join(dir, `${ART_IMAGE}.png`), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  store.emit('artifact.created', {id: ART_TEXT, title: 'Harbour notes', kind: 'html', mime: 'text/html; charset=utf-8', cat: 'scout', task: null, project: null, file: `${ART_TEXT}.html`, size: 90});
+  store.emit('artifact.created', {id: ART_IMAGE, title: 'Cover art', kind: 'image', mime: 'image/png', cat: 'baker', task: null, project: null, file: `${ART_IMAGE}.png`, size: 4});
+  store.emit('task.created', {id: 'req1', cat: 'scout', from: 'owner', text: 'Find a bakery', mode: 'local', status: 'queued'});
+  store.emit('task.created', {id: 'kid1', cat: 'baker', from: 'scout', text: 'Bake', mode: 'local', status: 'queued', parent: 'req1'});
+  store.emit('task.updated', {id: 'req1', status: 'done', result: 'Found a sourdough place called Marrow'});
+  store.emit('task.updated', {id: 'kid1', status: 'done', result: 'Child only kestrel'});
+}
+
+test('an artifact is found by its title or its text, a request by its result, and nothing else is', () => {
+  const w = world(), store = new Store(w.file, cats, {readModel: w.db});
+  artifacts(store, join(w.dir, 'artifacts'));
+  const rm = store.readModel!;
+  rm.flush();
+  assert.deepEqual(rm.search('Harbour').map(h => [h.kind, h.ref, h.title]), [['artifact', ART_TEXT, 'Harbour notes']], 'a word from the title');
+  assert.deepEqual(rm.search('Lighthouse').map(h => [h.kind, h.ref]), [['artifact', ART_TEXT]], 'a word from the text');
+  assert.deepEqual(rm.search('zebra'), [], 'a style block is not text');
+  assert.deepEqual(rm.search('body'), [], 'tags are not text');
+  assert.deepEqual(rm.search('Cover').map(h => [h.kind, h.ref]), [['artifact', ART_IMAGE]], 'an image has a title and no text');
+  assert.deepEqual(rm.search('Marrow').map(h => [h.kind, h.ref, h.title, h.text]), [['request', 'req1', 'Find a bakery', 'Found a sourdough place called Marrow']]);
+  assert.deepEqual(rm.search('kestrel'), [], 'a child task\'s result is not a request');
+  assert.deepEqual(rm.search('Lighthouse', 20, 'request'), [], 'the kind filter keeps other kinds out');
+  assert.equal(rm.search('Harbour', 20, 'artifact').length, 1);
+  store.emit('task.updated', {id: 'req1', status: 'done', result: 'Second answer pelican'});
+  rm.flush();
+  assert.deepEqual(rm.search('Marrow'), [], 'a later result replaces the earlier one');
+  assert.deepEqual(rm.search('pelican').map(h => h.ref), ['req1']);
+  rmSync(w.dir, {recursive: true});
+});
+
+test('deleting the database rebuilds the artifact and request hits from the journal and the files', () => {
+  const w = world(), store = new Store(w.file, cats, {readModel: w.db});
+  artifacts(store, join(w.dir, 'artifacts'));
+  store.readModel!.flush();
+  const before = ['Harbour', 'Lighthouse', 'Marrow'].map(q => store.readModel!.search(q).map(h => `${h.kind}:${h.ref}`));
+  rmSync(w.db);
+  const again = new Store(w.file, [], {readModel: w.db});
+  again.readModel!.flush();
+  assert.deepEqual(['Harbour', 'Lighthouse', 'Marrow'].map(q => again.readModel!.search(q).map(h => `${h.kind}:${h.ref}`)), before);
+  assert.deepEqual(before.map(h => h.length), [1, 1, 1]);
+  rmSync(w.dir, {recursive: true});
+});
+
+test('a database from the previous schema is dropped and rebuilt on start, with its stale rows gone', () => {
+  const w = world(), store = new Store(w.file, cats, {readModel: w.db});
+  fill(store); store.readModel!.flush({snapshot: true});
+  // What an older build left behind: its version, and a row the rebuild must not keep.
+  const sqlite = process.getBuiltinModule('node:sqlite')!;
+  const old = new sqlite.DatabaseSync(w.db);
+  old.exec("PRAGMA user_version=2; INSERT INTO search(kind,ref,cat,at,title,text) VALUES('note','stale','x','x','','ghost'); DELETE FROM meta WHERE key='rows';");
+  old.close();
+  const reread = new Store(w.file, [], {readModel: w.db});
+  assert.equal(reread.replayed, reread.state.events.length, 'no usable snapshot: a full replay');
+  reread.readModel!.flush();
+  assert.deepEqual(reread.readModel!.search('ghost'), []);
+  assert.equal(reread.readModel!.search('marmalade').length, 1, 'the journal rows are back');
+  assert.equal(reread.readModel!.counts().search, store.readModel!.counts().search);
   rmSync(w.dir, {recursive: true});
 });
 

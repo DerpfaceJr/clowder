@@ -6,14 +6,11 @@ import {join} from 'node:path';
 import {EVERY_WORLD, grantIn, type Accounts} from '../src/accounts.ts';
 import {ConnectorHub} from '../src/connectors.ts';
 import {Store} from '../src/store.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const PORT = 4321;
 const tmp = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
-async function until(fn: () => boolean, ms = 15000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 25)); }
-  assert.fail('Timed out waiting for the connectors');
-}
+const until = untilEvery(25, 15000);
 const fakeClient = {info: {}, listTools: async () => [{name: 'search', annotations: {readOnlyHint: true}}, {name: 'write_page'}], callTool: async (name: string) => ({text: `ran ${name}`, isError: false}), close: async () => {}};
 const fakeConnect = (async () => fakeClient) as any;
 const TOOLS = ['search', 'write_page'];

@@ -62,7 +62,9 @@ export interface ConnectorRuntime {
   toolsFor(cat: string): any[];
   /** The connector tool behind a function name, if this cat may use it now; null otherwise. permission counts this cat's own Always allow. */
   // identity: who the account was last verified as (@handle or email), or null when no whoami has confirmed it.
-  resolve(cat: string, name: string): {connector: string; label: string; tool: string; permission: 'allow' | 'ask'; effect: EffectClass; identity?: string | null} | null;
+  // by: the person whose tree makes the call (plan 10.8); absent or 'owner' is the owner. A member's call to an account not team-scoped is
+  // permission 'ask' with ownerOnly: a card only the owner answers. ownerOnly is absent on every other hit.
+  resolve(cat: string, name: string, by?: string): {connector: string; label: string; tool: string; permission: 'allow' | 'ask'; effect: EffectClass; identity?: string | null; ownerOnly?: true} | null;
   /** call() throws an error with unknown: true when the request went out and no answer came (timeout, abort, 5xx, a dropped link): it may have run. */
   call(cat: string, name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
   /** The owner's "Always allow" on an approval: the tool stops asking, as if set to Allow in Connectors. cat: for that cat only (item 1.4).

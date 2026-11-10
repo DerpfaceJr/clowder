@@ -9,8 +9,8 @@
 // Reduced motion: the clock stops (still rain, still snow), lightning and impacts never flash and the set pieces stand still.
 import * as T from 'three';
 
-export const WEATHERS=['clear','rain','thunder','snow','sakura','tornado','tsunami','meteors'];
-export const WEATHER_LABELS={clear:'Clear',rain:'Rain',thunder:'Thunder',snow:'Snow',sakura:'Sakura',tornado:'Tornado',tsunami:'Tsunami',meteors:'Meteors'};
+import {WEATHERS,WEATHER_LABELS} from './weather-names.js';
+export {WEATHERS,WEATHER_LABELS};
 
 // How each weather leans the light: dim (0..1) toward `sky`, how much snow lies on the ground, how far toward the night
 // preset (stars out, lamps lit). Wind scales the grass sway.

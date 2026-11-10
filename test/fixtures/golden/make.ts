@@ -10,16 +10,13 @@ import {Town} from '../../../src/engine.ts';
 import {Store, roadId} from '../../../src/store.ts';
 import type {Provider} from '../../../src/provider.ts';
 import {stateHash} from './state-hash.ts';
+import {untilEvery} from '../../helpers/until.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(readFileSync(join(HERE, '..', '..', '..', 'town.config.json'), 'utf8'));
 const reply = (content: string) => ({message: {role: 'assistant', content}});
 const provider: Provider = async () => reply('Made-up report: the scholar read three invented notes about a made-up river.');
-const until = async (fn: () => boolean, ms = 5000) => {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 10)); }
-  throw new Error('Timed out waiting for the scripted run.');
-};
+const until = untilEvery(10);
 
 const dir = mkdtempSync(join(tmpdir(), 'golden-'));
 const file = join(dir, 'events.jsonl');
@@ -93,6 +90,12 @@ ensure('council.closed', {id: 'council-1', status: 'retired', result: 'Made-up r
 ensure('cat.restored', {cat: sage, roads: sageRoads});
 ensure('task.created', {id: 'task-extra', cat: 'scholar', from: 'owner', text: 'Made-up extra task.', mode: 'test', status: 'done'});
 ensure('task.updated', {id: 'task-extra', result: 'Made-up result.'});
+ensure('suggestion.raised', {id: 'card-1', source: 'calendar', account: 'made-up-account', sourceId: 'event-1', category: 'prep', subject: 'Made-up meeting', person: 'person-1', sourceAt: '2026-11-07T00:00:00.000Z'});
+ensure('suggestion.closed', {id: 'card-1', why: 'started'});
+ensure('suggestion.raised', {id: 'card-2', source: 'clowder', account: null, sourceId: 'goal-1', category: 'quiet-goal', subject: 'Made-up goal', person: null, sourceAt: '2026-11-07T00:00:00.000Z'});
+ensure('suggestion.started', {id: 'card-2', task: taskId});
+ensure('suggestion.raised', {id: 'card-3', source: 'gmail', account: 'made-up-account', sourceId: 'thread-1', category: 'reply', subject: 'Made-up thread', person: 'person-2', sourceAt: '2026-11-07T00:00:00.000Z'});
+ensure('suggestion.dismissed', {id: 'card-3', reason: 'person'});
 
 writeFileSync(join(HERE, 'events.jsonl'), readFileSync(file));
 writeFileSync(join(HERE, 'state.sha256'), stateHash(store.state) + '\n');

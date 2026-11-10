@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {loadConfig,mergeConfig} from '../src/config.ts';
+import {economyOn,loadConfig,mergeConfig} from '../src/config.ts';
 
 const dir=()=>mkdtempSync(join(tmpdir(),'config-'));
 
@@ -39,6 +39,16 @@ test('the committed example overlay parses and names keys the base config has', 
   assert.equal(typeof example.port,'number');
   assert.equal(typeof example.economy.days,'number');
   assert.ok('localModel' in base && 'planModel' in base && 'days' in base.economy);
+});
+
+test('the coin economy ships off, and only economy.enabled true in an overlay turns it on', ()=>{
+  const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
+  assert.equal(base.economy.enabled,false);
+  assert.equal(economyOn(base),false);
+  for(const odd of [{},{economy:{}},{economy:{enabled:'true'}},{economy:{enabled:1}},null])assert.equal(economyOn(odd),false);
+  assert.equal(economyOn(mergeConfig(base,{economy:{enabled:true}})),true);
+  const example=JSON.parse(readFileSync(new URL('../town.local.example.json',import.meta.url),'utf8'));
+  assert.equal(economyOn(mergeConfig(base,example)),false,'copying the example overlay keeps it off');
 });
 
 test('a broken overlay fails with an error naming town.local.json', ()=>{

@@ -4,6 +4,7 @@ import {resolve} from 'node:path';
 import type {FastifyInstance,FastifyReply,FastifyRequest} from 'fastify';
 import {writeJsonAtomic} from './atomic-json.ts';
 import {defaultSender,RateLimiter,type Sender} from './push.ts';
+import {ErrorClock,healthOf,type Health} from './health.ts';
 import {withSecrets,withoutSecrets} from './secret-store.ts';
 
 // Ping channel for paired devices that have no Web Push (the Android WebView, plan 5.4). Each push-worthy notice POSTs one fixed,
@@ -31,10 +32,13 @@ export class NtfyService{
   private readonly file:string;
   private readonly send:Sender;
   private readonly limiter:RateLimiter<null>;
+  // The last ping that failed, while none has since succeeded (11.21). Kept in memory: a restart clears it.
+  private readonly failing:ErrorClock;
   constructor(opts:NtfyOptions){
     this.server=ntfyServer(opts.server??DEFAULT_NTFY);
     this.file=resolve(opts.dataDir,'ntfy.json');
     this.send=opts.send??defaultSender;
+    this.failing=new ErrorClock(opts.now??Date.now);
     // The limiter is keyed by device id; a delivery re-reads the store, so a device revoked while a ping waits gets nothing.
     this.limiter=new RateLimiter<null>(WINDOW_MS,id=>{void this.post(id);},opts.now??Date.now,opts.later,opts.stopTimer);
   }
@@ -79,8 +83,17 @@ export class NtfyService{
   private async post(device:string){
     const topic=this.read().devices[device]?.topic;
     if(!topic)return;
-    try{await this.send(this.urlFor(topic),{Title:'Clowder',Click:PING_CLICK,Priority:'default'},Buffer.from(PING_BODY));}
-    catch{/* a failed ping is not retried; the next notice pings again */}
+    // The error text is fixed: the topic is the secret, and a failure message may carry the address.
+    try{const code=await this.send(this.urlFor(topic),{Title:'Clowder',Click:PING_CLICK,Priority:'default'},Buffer.from(PING_BODY));
+      this.failing.set(code>=400?'The ntfy server refused a ping.':null);}
+    catch{/* a failed ping is not retried; the next notice pings again */this.failing.set('The ntfy server could not be reached.');}
+  }
+  /** The integration contract (health.ts): off while no device is enabled; error while the last ping failed. */
+  health():Health{
+    let enabled:boolean;
+    try{enabled=Object.keys(this.read().devices).length>0;}
+    catch{return healthOf(true,'ntfy.json could not be read.',null);}
+    return healthOf(enabled,this.failing.error,this.failing.since);
   }
   close(){this.limiter.close();}
 }

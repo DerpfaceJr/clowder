@@ -12,6 +12,7 @@ import {ConnectorHub, effectOf, fnNames, registerConnectorRoutes} from '../src/c
 import {DIRECTORY, directoryEntry, directoryList} from '../src/connector-directory.ts';
 import {openSecretStore, resetSecretStores, storeFor, type Broker} from '../src/secret-store.ts';
 import {Store} from '../src/store.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const HOUR = 3_600_000, DAY = 24 * HOUR;
 const CLIENT = {clientId: 'cid-123.apps.googleusercontent.com', clientSecret: 'GOCSPX-fake-secret'};
@@ -74,7 +75,7 @@ async function signIn(hub: ConnectorHub, id: string, code: string) {
   const r = await hub.signIn(id);
   return {url: new URL(r.url), r, name: await hub.finishSignIn({code, state: new URL(r.url).searchParams.get('state')!})};
 }
-async function until(f: () => boolean) { const end = Date.now() + 5000; while (!f()) { if (Date.now() > end) assert.fail('timed out'); await new Promise(r => setTimeout(r, 10)); } }
+const until = untilEvery(10);
 const allFiles = (dir: string): string[] => readdirSync(dir).flatMap(n => { const p = join(dir, n); return statSync(p).isDirectory() ? allFiles(p) : [p]; });
 
 test('two Google accounts through one owner client: two Accounts with their own emails, refreshed with the saved refresh token, secrets only in the store', async () => {
@@ -110,9 +111,11 @@ test('two Google accounts through one owner client: two Accounts with their own 
     // Eight days on (past Testing mode's 7): the access token has long ended, and the saved refresh token renews it with the owner's client.
     clock.now += 8 * DAY;
     assert.equal((await monitor.check('google-workspace-work'))?.status, 'connected');
-    const refresh = g.grants.at(-1)!;
-    assert.deepEqual([refresh.grant_type, refresh.refresh_token, refresh.client_id, refresh.client_secret], ['refresh_token', 'rt-work', CLIENT.clientId, CLIENT.clientSecret]);
-    assert.match(g.userinfo.at(-1)!, /^Bearer at-work-3$/);
+    // The newest grant and userinfo call of the Work account, not of the list: the Personal account renews by itself after the same jump,
+    // and under load its grant landed last (one full-suite run beside an installer build, 2026-11-10).
+    const refresh = g.grants.filter(x => x.grant_type === 'refresh_token' && x.refresh_token === 'rt-work').at(-1)!;
+    assert.deepEqual([refresh?.grant_type, refresh?.refresh_token, refresh?.client_id, refresh?.client_secret], ['refresh_token', 'rt-work', CLIENT.clientId, CLIENT.clientSecret]);
+    assert.match(g.userinfo.filter(h => h.startsWith('Bearer at-work')).at(-1)!, /^Bearer at-work-3$/);
 
     // The trial server gets the owner's client and a fresh access token at launch, never the refresh token.
     await until(() => launched.some(t => t.env?.WORKSPACE_MCP_CREDENTIALS_DIR?.endsWith('google-workspace-work')));

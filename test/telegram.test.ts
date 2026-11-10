@@ -60,6 +60,9 @@ test('Telegram: owner-only pairing by code, inbox, inline buttons by class, reci
     const inbox=desk.store.state.tasks.find(t=>t.text==='Plan my week')!;
     assert.equal(inbox.cat,'mayor');assert.equal(inbox.from,'owner');assert.deepEqual(inbox.inbox,{goal:false});
     assert.ok(desk.store.state.messages.some(m=>m.from==='owner'&&m.to==='mayor'&&m.text==='Plan my week'));
+    // The Mailman delivers it: his line to the Mayor comes just before the owner's, so the town draws his visit.
+    const at=desk.store.state.messages.findIndex(m=>m.from==='owner'&&m.text==='Plan my week');
+    assert.deepEqual([desk.store.state.messages[at-1].from,desk.store.state.messages[at-1].to,desk.store.state.messages[at-1].text],['mailman','mayor','Post for you, by Telegram.']);
     // The Mayor's reply to that message comes back to the chat; a reply to an in-app message does not.
     desk.town.message('mayor','owner','Here is your week.',inbox.id);
     desk.town.message('mayor','owner','In-app only.','some-other-task');
@@ -69,7 +72,7 @@ test('Telegram: owner-only pairing by code, inbox, inline buttons by class, reci
     // A private write: Allow and Deny buttons. The stranger's tap does nothing; the owner's tap resolves it with device 'telegram'.
     const write=await desk.ask(WRITE,{note:'groceries'});
     const notice=bot.to(OWNER).find(m=>/update_note/.test(m.body.text))!;
-    assert.match(notice.body.text,/Scholar needs you: .*update_note/i);
+    assert.match(notice.body.text,/Needs you: .*update_note/i);
     assert.deepEqual(notice.body.reply_markup,{inline_keyboard:[[{text:'Allow once',callback_data:`a:${write.id}:0`},{text:'Deny',callback_data:`a:${write.id}:1`}]]});
     bot.queue(bot.tap(STRANGER,`a:${write.id}:0`));await channel.pollOnce();
     assert.equal(desk.pending().some(a=>a.id===write.id),true,'a stranger cannot answer');

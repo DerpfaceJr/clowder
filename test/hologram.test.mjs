@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {oneLiner,fitBubble} from '../public/hologram.js';
+import {oneLiner} from '../public/one-liner.js';
+import {fitBubble} from '../public/hologram.js';
 import {MessageVisits} from '../public/world-motion.js';
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url)));
 const cats=[{id:'mayor',home:{x:-8,z:8}},{id:'scholar',home:{x:0,z:8}}];

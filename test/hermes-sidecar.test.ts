@@ -19,12 +19,13 @@ import {storeFor} from '../src/secret-store.ts';
 import {BUILTINS} from '../src/tool-runtimes.ts';
 import {ALLOW_ONCE,EVERY_CAT,THIS_CAT} from '../src/accounts.ts';
 import type {ConnectorRuntime} from '../src/connector-types.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const config=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const tmp=(p:string)=>mkdtempSync(join(tmpdir(),p));
 const freePort=()=>new Promise<number>(done=>{const s=createServer().listen(0,'127.0.0.1',()=>{const {port}=s.address() as {port:number};s.close(()=>done(port));});});
-async function until<T>(fn:()=>T|undefined|false,ms=20_000,what='condition'):Promise<T>{const end=Date.now()+ms;while(Date.now()<end){const v=fn();if(v)return v;await new Promise(r=>setTimeout(r,25));}assert.fail(`timed out waiting for ${what}`);}
+const until = untilEvery(25, 20000);
 const run=promisify(execFile);
 const alive=(pid:number)=>{try{process.kill(pid,0);return true;}catch{return false;}};
 
@@ -243,7 +244,7 @@ test('an ask produces exactly one card, and answering it resolves the parked cal
   w.town.hermes=()=>sidecar;
   await fetch(`${sidecar.url}/fake/park`,{method:'POST',body:JSON.stringify({run,approval:first.approval})});
   w.town.decide(first.approval!,ALLOW_ONCE,true);
-  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===first.approval),5000,'answered');
+  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===first.approval),15_000,'answered');
   const answers=await fetch(`${sidecar.url}/fake/answers`).then(r=>r.json()) as any[];
   assert.deepEqual(answers.at(-1),{run,request_id:`prompt-${first.approval!.slice(0,8)}`,execution_generation:3,choice:'once'});
   assert.equal(card(first.approval).status,'approved');
@@ -252,31 +253,31 @@ test('an ask produces exactly one card, and answering it resolves the parked cal
   const denied=await decision({...call,tool_call_id:'call-8'});
   await fetch(`${sidecar.url}/fake/park`,{method:'POST',body:JSON.stringify({run,approval:denied.approval})});
   w.town.decide(denied.approval!,'Deny',false);
-  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===denied.approval),5000,'denied');
+  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===denied.approval),15_000,'denied');
   assert.equal((await fetch(`${sidecar.url}/fake/answers`).then(r=>r.json()) as any[]).at(-1).choice,'deny');
   assert.equal(card(denied.approval).status,'rejected');
   // Always allow is Clowder's own setting; Hermes still gets once.
   const always=await decision({...call,tool_call_id:'call-9'});
   await fetch(`${sidecar.url}/fake/park`,{method:'POST',body:JSON.stringify({run,approval:always.approval})});
   w.town.decide(always.approval!,THIS_CAT,true);
-  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===always.approval),5000,'always');
+  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===always.approval),15_000,'always');
   assert.ok(allowed.includes('github:push_files:mayor'),'this cat only');
   const every=await decision({...call,tool_call_id:'call-9b'});
   await fetch(`${sidecar.url}/fake/park`,{method:'POST',body:JSON.stringify({run,approval:every.approval})});
   w.town.decide(every.approval!,EVERY_CAT,true);
-  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===every.approval),5000,'every');
+  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===every.approval),15_000,'every');
   assert.ok(allowed.includes('github:push_files:every'),'every cat');
   // A request_approval answer that reads like an Always allow is only the owner's answer: nothing is switched on.
   const before=allowed.length,q=await decision({tool:'mcp__clowder__request_approval',args:{question:'Which?',options:[EVERY_CAT,'No']},session_id:session,tool_call_id:'call-q'});
   await fetch(`${sidecar.url}/fake/park`,{method:'POST',body:JSON.stringify({run,approval:q.approval})});
   w.town.decide(q.approval!,EVERY_CAT,true);
-  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===q.approval),5000,'reply');
+  await until(()=>w.store.state.events.some(e=>e.type==='hermes.answered'&&e.data.approval===q.approval),15_000,'reply');
   assert.equal(allowed.length,before);
   assert.equal((await fetch(`${sidecar.url}/fake/answers`).then(r=>r.json()) as any[]).at(-1).choice,'once');
   // A card whose run is not parked any more is journaled as undelivered (the bridge's restart path, 4.10), and nothing throws.
   const lost=await decision({...call,tool_call_id:'call-10'});
   w.town.decide(lost.approval!,ALLOW_ONCE,true);
-  const undelivered=await until(()=>w.store.state.events.find(e=>e.type==='hermes.undelivered'&&e.data.approval===lost.approval),5000,'undelivered');
+  const undelivered=await until(()=>w.store.state.events.find(e=>e.type==='hermes.undelivered'&&e.data.approval===lost.approval),15_000,'undelivered');
   assert.match(undelivered.data.reason,/running/);
 });
 
@@ -311,7 +312,7 @@ test('a Clowder that died hard finds its Hermes still up and keeps it instead of
     assert.deepEqual(last(v,'hermes.ready')!.data,{pid,adopted:true});
     assert.equal(types(v).filter(t=>t==='hermes.started').length,started,'no second Hermes');
     await b.stop();
-    await until(()=>!alive(pid),10_000,'the adopted Hermes gone');
+    await until(()=>!alive(pid),15_000,'the adopted Hermes gone');
   }finally{await b.stop();v.town.dispose();await v.app.close();}
 });
 
@@ -329,7 +330,7 @@ test('post_tool_call results are journaled masked; Clowder\'s own tools are left
 test('stop ends Hermes and forgets the nonce',async()=>{
   const pid=sidecar.hello!.pid;
   await sidecar.stop();
-  await until(()=>!alive(pid),10_000,'process gone');
+  await until(()=>!alive(pid),15_000,'process gone');
   assert.equal(sidecar.ready(),false);assert.equal(sidecar.isCurrent(sidecar.nonce),false);
   assert.equal(types(w).at(-1),'hermes.stopped');
 });

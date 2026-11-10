@@ -131,7 +131,9 @@ export class RealMoney{
   // ---- The Mayor's request ----
   /** Checks a request against the policy. Refusals throw a reason the Mayor can read. Pre-pay: within limits waits for the owner.
    *  Autopay: within limits is approved for the card; anything over the limits waits for the owner. */
-  request(args:any,from:{task?:string;journal?:Store}={}):{purchase:Purchase;message:string}{
+  // ask: why this purchase waits for the owner even within the Autopay limits, shown as its note: work a For you card started (plan 9.7), or a
+  // team member's work (plan 10.7).
+  request(args:any,from:{task?:string;journal?:Store;ask?:string}={}):{purchase:Purchase;message:string}{
     const policy=this.policy();
     if(!policy.enabled)throw new Error('Real-money purchases are off. Only the owner can turn them on, on the host computer.');
     const text=(k:string,max:number)=>{const v=args?.[k];if(typeof v!=='string'||!v.trim()||v.length>max)throw new Error(`Give ${k} (at most ${max} characters).`);return v.trim();};
@@ -160,9 +162,9 @@ export class RealMoney{
     const together=earlier.reduce((sum,p)=>sum+this.committed(p),amountMinor);
     if(earlier.length&&together>policy.perPurchaseLimitMinor)over.push(`with ${earlier.length} earlier request${earlier.length>1?'s':''} to ${vendor} in the last 24 hours this comes to ${money(together)}, over the per-purchase limit of ${money(policy.perPurchaseLimitMinor)}. Splitting a purchase does not get around the limit`);
     if(over.length&&policy.mode==='prepay')refuse(`${over.join('; ')}.`);
-    const auto=policy.mode==='autopay'&&!over.length;
+    const auto=policy.mode==='autopay'&&!over.length&&!from.ask;
     const status:Status=auto?'auto-approved':'pending';
-    const note=over.length?`Over the Autopay limits: ${over.join('; ')}.`:'';
+    const note=over.length?`Over the Autopay limits: ${over.join('; ')}.`:policy.mode==='autopay'&&from.ask?from.ask:'';
     this.append('requested',{...base,status,note});
     if(auto)this.append('decided',{id:base.id,status,decision:'Within the owner’s Autopay limits.',expiresAt:new Date(this.now().getTime()+APPROVAL_HOURS*HOUR).toISOString()});
     this.journal('purchase.requested',{id:base.id,vendor,amountMinor,currency,status,note},from.journal);

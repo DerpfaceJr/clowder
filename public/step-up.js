@@ -2,7 +2,7 @@
 // once Devices on the computer allows it, and then confirm with it before changing what is otherwise only on the computer: money settings,
 // Stripe, marking paid and new webhook links. A confirm lasts a few minutes, for that phone only. The server checks everything
 // (src/remote-access.ts StepUp, src/webauthn.ts); this file only carries WebAuthn's binary fields as base64url and says what happens.
-// Phone: ☰ > Devices & AI > Passkey (createStepUp). Computer: one line and button under each owner device in Devices (passkeyControls).
+// Phone: ☰ > Devices > Passkey (createStepUp). Computer: one line and button under each owner device in Devices (passkeyControls).
 // Pure helpers are exported for Node tests; the DOM is built with createElement and textContent only.
 import {el} from './projects-panel.js';
 import {confirmDialog} from './dialogs.js';
@@ -56,7 +56,7 @@ export function passkeyLine(device, status, {now = Date.now(), locale} = {}) {
   if (device.passkey) return device.passkey.rpId === here
     ? {text: `Passkey added ${new Date(device.passkey.createdAt).toLocaleDateString(locale)}: can change money settings after confirming.`, action: 'remove'}
     : {text: 'Its passkey was made for another address and does not work here.', action: 'remove'};
-  if (device.passkeyAllowedUntil > now) return {text: `Waiting for the phone to add its passkey, until ${clock(device.passkeyAllowedUntil, locale)}. On the phone: ☰ Settings, Devices & AI, Passkey.`, action: null};
+  if (device.passkeyAllowedUntil > now) return {text: `Waiting for the phone to add its passkey, until ${clock(device.passkeyAllowedUntil, locale)}. On the phone: ☰ Settings, Devices, Passkey.`, action: null};
   return {text: 'No passkey: this phone cannot change money settings.', action: 'allow'};
 }
 

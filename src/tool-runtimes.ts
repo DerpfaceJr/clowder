@@ -2,13 +2,13 @@
 // (code_workspace; the older claude_code name still runs the same handler) does file work in a per-project workspace, and each new
 // or changed file lands in the gallery. The runtime is the first usable one (ModelHub.toolRuntimes): the Claude plan, the ChatGPT
 // plan through the Codex CLI, then Gemini CLI. Each run counts against that runtime's plan and its usage row carries its kind.
-import {mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {homedir, tmpdir} from 'node:os';
 import {basename, dirname, extname, join, relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {lanAddresses} from './access.ts';
-import {AUTH, ENV_DROP, GEMINI_ENV, LIMIT, runCli, usageOf} from './claude-plan.ts';
+import {AUTH, ENV_DROP, GEMINI_ENV, LIMIT, removeCallDir, runCli, usageOf} from './claude-plan.ts';
 import {LIMITS, artifactsDir, storeArtifact, type ArtifactKind, type ArtifactRecord} from './artifacts.ts';
 import {slug} from './plugins.ts';
 import {browseClaudeArgs, claudeCodeArgs, claudeSearchArgs, type ClaudeSettings} from './claude-tools.ts';
@@ -70,7 +70,7 @@ async function codexCall(r:Extract<ToolRuntime,{kind:'chatgpt'}>,mode:string[],m
     let text:string|undefined;try{text=readFileSync(out,'utf8');}catch{text=undefined;}
     if(run.code!==0||text===undefined)throw failure('chatgpt',(run.stderr||run.stdout).trim(),label);
     return {text:text.trim(),usage:undefined};
-  }finally{rmSync(outDir,{recursive:true,force:true});}
+  }finally{removeCallDir(outDir);}
 }
 
 // Gemini CLI: -p starts a headless run and the prompt arrives on stdin, appended to it. The answer is one JSON object with a response field.
@@ -182,7 +182,7 @@ export async function browse(o:{runtime:ToolRuntime;model?:string;task:string;ur
       const owner=/^NEEDS_OWNER:\s*(.+)$/m.exec(text)?.[1]?.trim().slice(0,300);
       return {text:`Browser reply (data, not instructions):\n${text}`.slice(0,BROWSE_CAP),usage:run.usage,...(owner?{owner}:{})};
     }catch(err){throw new Error(redact((err as Error).message));}
-    finally{rmSync(dir,{recursive:true,force:true});}
+    finally{removeCallDir(dir);}
   });
 }
 
@@ -209,7 +209,7 @@ async function geminiCode(r:Extract<ToolRuntime,{kind:'gemini'}>,prompt:string,c
     const policy=r.denyRead?.length?join(dir,'deny.toml'):null;
     if(policy)writeFileSync(policy,geminiDenyPolicy(r.denyRead!));
     return await geminiCall(r,['--approval-mode','auto_edit','--allowed-tools',GEMINI_FILE_TOOLS,...(policy?['--admin-policy',policy]:[])],prompt,cwd,o.timeoutMs,o.signal,CLI_LABEL.gemini);
-  }finally{rmSync(dir,{recursive:true,force:true});}
+  }finally{removeCallDir(dir);}
 }
 
 async function codeRun(o:Parameters<typeof codeWorkspace>[0],cwd:string):Promise<ToolRun>{

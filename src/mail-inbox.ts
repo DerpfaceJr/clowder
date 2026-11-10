@@ -5,17 +5,18 @@ import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {FastifyInstance, FastifyReply, FastifyRequest} from 'fastify';
 import {writeJsonAtomic} from './atomic-json.ts';
+import {GoogleError, gmail} from './google-rest.ts';
+import {healthOf, type Health} from './health.ts';
 
-const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // ponytail: seen ids are capped; the history cursor is what stops old mail, the list only covers replays around a crash.
 const SEEN_MAX = 500, BODY_MAX = 4000, SUBJECT_MAX = 200;
 
 export type MailSettings = {enabled: boolean; account?: string; label?: {id: string; name: string}; owners?: string[]};
-type Saved = MailSettings & {self?: string; historyId?: string; seen: string[]; taken: number; ignored: number; lastPollAt?: number; error?: string | null};
+type Saved = MailSettings & {self?: string; historyId?: string; seen: string[]; taken: number; ignored: number; lastPollAt?: number; error?: string | null; errorSince?: number};
 export type MailPatch = {enabled?: boolean; account?: string; label?: string; owners?: string[]};
 export type MailWatchOptions = {
   dataDir: string;
-  town: () => {inbox(text: string, mode: string): string};
+  town: () => {inbox(text: string, mode: string, origin?: 'suggestion', via?: string): string};
   mode: () => string;
   token: (account: string) => Promise<string | null>; // the hub's live token for an account: renewed when it has run out
   interval: () => number; // seconds, read on every tick so town.config.json edits apply without a restart
@@ -30,9 +31,8 @@ const authentic = (m: Msg) => !!m.labelIds?.includes('SENT') || /\bdmarc=pass\b/
 type History = {history?: {messagesAdded?: {message: {id: string}}[]; labelsAdded?: {message: {id: string}}[]}[]; historyId?: string; nextPageToken?: string};
 
 const bad = (message: string) => Object.assign(new Error(message), {statusCode: 400});
-class GmailError extends Error { constructor(readonly status: number) { super(`Gmail ${status}`); } }
-const header = (m: Msg, name: string) => m.payload?.headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
-const address = (from: string) => (/<([^>]+)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
+export const header = (m: Msg, name: string) => m.payload?.headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
+export const address = (from: string) => (/<([^>]+)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
 const oneLine = (s: string, n: number) => s.replace(/\s+/g, ' ').trim().slice(0, n);
 // Gmail's base64url, decoded as UTF-8: the first text/plain part, else the snippet.
 const decode = (d: string) => Buffer.from(d.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
@@ -56,7 +56,6 @@ export class MailWatcher {
   constructor(private o: MailWatchOptions) {}
   private get file() { return join(this.o.dataDir, 'mail-watch.json'); }
   private now() { return (this.o.now ?? Date.now)(); }
-  private f(url: string, init: RequestInit) { return (this.o.fetch ?? fetch)(url, init); }
 
   /** Saved settings and counters. A missing file is off; a damaged one is off with the error shown, and the next save replaces it. */
   load(): Saved {
@@ -67,6 +66,12 @@ export class MailWatcher {
     } catch { return {enabled: false, seen: [], taken: 0, ignored: 0, error: 'mail-watch.json could not be read. Turn the watcher on again.'}; }
   }
   private save(s: Saved) { writeJsonAtomic(this.file, s); }
+
+  /** The integration contract (health.ts): off unless the watcher is on. */
+  health(): Health {
+    const s = this.load();
+    return healthOf(s.enabled === true, s.error ?? null, s.errorSince ?? null);
+  }
 
   status() {
     const s = this.load();
@@ -109,6 +114,7 @@ export class MailWatcher {
     const s = this.load();
     if (!s.enabled) return;
     s.lastPollAt = this.now();
+    const wasError = s.error;
     try {
       if (!s.account || !s.label) throw new Error('Pick the Google account and the Gmail label first.');
       const token = await this.o.token(s.account);
@@ -131,17 +137,17 @@ export class MailWatcher {
         } while (page);
       } catch (e) {
         // Gmail forgets old cursors after about a week: start again from now, and say so, since mail in the gap is not read.
-        if (e instanceof GmailError && e.status === 404) { s.historyId = me.historyId; s.error = 'Gmail no longer had the place the watcher left off, so mail from that gap was not read.'; return; }
+        if (e instanceof GoogleError && e.status === 404) { s.historyId = me.historyId; s.error = 'Gmail no longer had the place the watcher left off, so mail from that gap was not read.'; return; }
         throw e;
       }
       for (const id of ids) {
         if (s.seen.includes(id)) continue; // taken before, maybe before a restart: never twice
         let m: Msg;
         try { m = await this.gmail<Msg>(`/messages/${id}?format=full`, token); }
-        catch (e) { if (e instanceof GmailError && e.status === 404) { s.seen.push(id); continue; } throw e; } // deleted since it was filed
+        catch (e) { if (e instanceof GoogleError && e.status === 404) { s.seen.push(id); continue; } throw e; } // deleted since it was filed
         if (owners.includes(address(header(m, 'From'))) && authentic(m)) {
           // Throws when no model is configured: the id is not seen, so the next pass tries it again.
-          this.o.town().inbox(frameEmail(oneLine(header(m, 'From'), 200), oneLine(header(m, 'Subject'), SUBJECT_MAX), plain(m.payload) ?? m.snippet ?? ''), this.o.mode());
+          this.o.town().inbox(frameEmail(oneLine(header(m, 'From'), 200), oneLine(header(m, 'Subject'), SUBJECT_MAX), plain(m.payload) ?? m.snippet ?? ''), this.o.mode(), undefined, 'email');
           s.taken++;
           // A failed mark does not undo the take: the seen list already stops a second one.
           await this.gmail(`/messages/${id}/modify`, token, {method: 'POST', body: {removeLabelIds: ['UNREAD']}}).catch(() => {});
@@ -153,15 +159,14 @@ export class MailWatcher {
     } catch (e) {
       s.error = (e as Error).message;
     } finally {
+      // When the current error began (11.21): a poll that still fails keeps the first time.
+      s.errorSince = s.error ? (wasError ? s.errorSince : this.now()) : undefined;
       this.save(s);
     }
   }
 
-  private async gmail<T>(path: string, token: string, init: {method?: string; body?: unknown} = {}): Promise<T> {
-    const json: Record<string, string> = init.body === undefined ? {} : {'Content-Type': 'application/json'};
-    const res = await this.f(`${GMAIL}${path}`, {method: init.method ?? 'GET', headers: {Authorization: `Bearer ${token}`, ...json}, ...(init.body === undefined ? {} : {body: JSON.stringify(init.body)}), signal: AbortSignal.timeout(20_000)});
-    if (!res.ok) throw new GmailError(res.status); // the token is never in the message
-    return (await res.json().catch(() => ({}))) as T;
+  private gmail<T>(path: string, token: string, init: {method?: string; body?: unknown} = {}): Promise<T> {
+    return gmail<T>(this.o.fetch ?? fetch, path, token, init);
   }
 
   /** The loop. Each tick reads the interval again; a tick with the watcher off only reads the settings file. */

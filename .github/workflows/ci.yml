@@ -1,0 +1,43 @@
+# Type check and a fast, platform-neutral subset of the tests on every push to main and on pull requests, so a break is caught the day it
+# lands instead of at release. One Linux job, cancelled when a newer push arrives; pushes that touch only the website or docs are skipped.
+# The full suite (about 7 minutes, with browsers and real servers) stays a local step before a push.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['site/**', 'docs/**', '**/*.md']
+  pull_request:
+    paths-ignore: ['site/**', 'docs/**', '**/*.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The same major as release.yml.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      # The type check and these tests never start Electron, so its binary is not downloaded.
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - run: npx tsc --noEmit
+
+      # Pure logic and in-process HTTP only: no browser, no spawned process, no fixed port.
+      - run: npx tsx --test test/first-load-graph.test.mjs test/pwa.test.mjs test/publish-ledger.test.ts test/artifacts.test.ts

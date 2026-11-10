@@ -209,12 +209,15 @@ test('Organise files the notes and says what it did; a viewer gets the owner sen
   assert.equal(viewer.dialog.querySelector('.mp-views').hidden, true);
 });
 
-test('app.js opens Memory from ☰ and openSurface; the menu lists Memory and Usage after Routines; the graph can be focused', () => {
-  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+test('Memory lives with the Archivist: its chip, Options > Manage, /memory and openSurface open it, ☰ no longer lists it; the graph can be focused', async () => {
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(app, /initMemoryPanel\(\{town:\(\)=>state\}\)/);
   assert.match(app, /memory:\(\)=>void memoryPanel\.open\(\)/);
-  const menu = readFileSync(new URL('../public/settings-menu.js', import.meta.url), 'utf8');
-  assert.match(menu, /'routines', 'memory', 'usage', 'sound'/);
-  const view = readFileSync(new URL('../public/memory-view.js', import.meta.url), 'utf8');
+  const {ROWS} = await import('../public/settings-menu.js');
+  const {KEEPERS} = await import('../public/manage.js');
+  assert.ok(!ROWS.includes('memory') && !ROWS.includes('usage'), 'neither Memory nor Usage is a ☰ row');
+  assert.deepEqual(KEEPERS.find(k => k.role === 'archivist').items, ['memory', 'backups']);
+  assert.ok(!readFileSync(new URL('../public/memory-panel.js', import.meta.url), 'utf8').includes('registerSettingsSection'), 'no ☰ section');
+  const view = readFileSync(new URL('../public/memory-view.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(view, /focus\(id\) \{ guard\(focusOn\(id\)\); \}/);
 });

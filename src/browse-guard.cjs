@@ -11,6 +11,8 @@ const site = process.env.CLOWDER_BROWSE_SITE || '';
 function allowed(url, o = {lan, site}) {
   let u;
   try { u = new URL(url); } catch { return true; }
+  // A file on this computer (the data folder, the owner key) never opens, on top of Playwright's own file:// block.
+  if (u.protocol === 'file:') return false;
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
   const h = u.hostname.toLowerCase().replace(/\.$/, '');
   if (h === 'localhost' || h.endsWith('.localhost') || /^127\./.test(h) || h === '0.0.0.0' || h === '[::1]' || h.startsWith('[::ffff:7f') || o.lan.includes(h)) return false;

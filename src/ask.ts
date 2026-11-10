@@ -1,7 +1,7 @@
 // Asides: the owner asks a cat about progress while it works. One tool-less provider call answers from a compact
 // context. Nothing here creates a task, touches a running task's context or a goal, or blocks or cancels work.
 import type {FastifyInstance} from 'fastify';
-import {oneLiner} from '../public/hologram.js';
+import {oneLiner} from '../public/one-liner.js';
 import {normalizeMode} from './ai-options.ts';
 import {projects} from './projects.ts';
 import type {Cat, State} from './store.ts';

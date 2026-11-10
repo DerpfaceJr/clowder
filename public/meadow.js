@@ -3,41 +3,22 @@
 // InstancedMesh for the whole streamed area (trees split into a shadow-casting near set and a far set).
 import * as T from 'three';
 import {noise2} from './terrain.js';
-import {scatterChunk,grassChunk,makeBlocker,wildness,DECOR} from './vegetation.js';
+import {scatterChunk,grassChunk,makeBlocker,wildness,DECOR,ROCK_KINDS,ROCK_FOOT} from './vegetation.js';
 import {propGeometries,propMaterial,wind} from './world-art.js';
+import {rockGeometries} from './rocks.js';
 import {createWaterMaterial} from './water.js';
+import {grassTexture,fieldGround,grassUv,grassMaterial,setGrassLook,bladeGeometry,field} from './grass.js';
 
-const C=c=>new T.Color(c);
+const C=c=>new T.Color(c),smooth=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
 // Sage greens, a little less saturated than the first grass pass, so the meadow sits behind the houses and cats.
-export const PAL={meadow:C('#98b47a'),lush:C('#8aab72'),dry:C('#b5c088'),sand:C('#d2c194'),wet:C('#a99a74'),bed:C('#6d7d5f'),town:C('#9fb781')};
-
-// Painted grass for the ground: soft blotches and short rounded strokes, seamless, drawn once. Stored around 0.85 so it
-// can both darken and (x1.2 in the shader) lighten the vertex colour; mipmapped and anisotropic so it never shimmers.
-function grassTexture(anisotropy){
-  const N=512,c=document.createElement('canvas');c.width=c.height=N;const g=c.getContext('2d'),rnd=(()=>{let h=7;return ()=>(h=(h*16807)%2147483647)/2147483647;})();
-  g.fillStyle='rgb(214,222,196)';g.fillRect(0,0,N,N);
-  const wrap=(draw,x,y,r)=>{for(const dx of [-N,0,N])for(const dy of [-N,0,N])if(x+dx>-r&&x+dx<N+r&&y+dy>-r&&y+dy<N+r)draw(x+dx,y+dy);};
-  for(let i=0;i<70;i++){const x=rnd()*N,y=rnd()*N,r=30+rnd()*70,light=rnd()>.5;
-    wrap((px,py)=>{const grad=g.createRadialGradient(px,py,0,px,py,r);grad.addColorStop(0,light?'rgba(240,246,214,.26)':'rgba(170,190,140,.22)');grad.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=grad;g.fillRect(px-r,py-r,r*2,r*2);},x,y,r);}
-  g.lineCap='round';
-  for(let i=0;i<2600;i++){
-    const x=rnd()*N,y=rnd()*N,len=7+rnd()*9,lean=(rnd()-.5)*.9,t=rnd(),w=2.2+rnd()*1.8;
-    const col=t<.45?`rgba(${150+t*60|0},${176+t*50|0},${120+t*40|0},.42)`:`rgba(${226+t*20|0},${236+t*12|0},${196+t*20|0},.38)`;
-    wrap((px,py)=>{g.strokeStyle=col;g.lineWidth=w;g.beginPath();g.moveTo(px,py);g.quadraticCurveTo(px+lean*len*.3,py-len*.6,px+lean*len,py-len);g.stroke();},x,y,20);
-  }
-  const tex=new T.CanvasTexture(c);tex.wrapS=tex.wrapT=T.RepeatWrapping;tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=anisotropy;tex.minFilter=T.LinearMipmapLinearFilter;
-  return tex;
-}
-const GRASS_TILE=3.2;// metres per repeat of the painted grass
+export const PAL={meadow:C('#98b47a'),lush:C('#8aab72'),dry:C('#b5c088'),sand:C('#d2c194'),wet:C('#a99a74'),bed:C('#6d7d5f'),town:C('#9fb781'),
+  // The field's patches (colourAt): sun-dried warm straw and lush deep green.
+  sunDried:C('#c0c182'),deep:C('#73a05f')};
 
 export function createMeadow(scene,{mobile,anisotropy=4}){
-  const terrainMaterial=new T.MeshStandardMaterial({vertexColors:true,roughness:1,map:grassTexture(anisotropy)});
-  // The painted grass shows where vertex attribute grassW is 1 (meadow) and fades out on sand, banks and riverbed.
-  terrainMaterial.onBeforeCompile=shader=>{
-    shader.vertexShader='attribute float grassW;varying float vGrassW;'+String.fromCharCode(10)+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>'+String.fromCharCode(10)+'vGrassW=grassW;');
-    shader.fragmentShader='varying float vGrassW;'+String.fromCharCode(10)+shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP'+String.fromCharCode(10)+'diffuseColor.rgb*=mix(vec3(1.),texture2D(map,vMapUv).rgb*1.2,vGrassW);'+String.fromCharCode(10)+'#endif');
-  };
-  terrainMaterial.customProgramCacheKey=()=>'meadow-ground';
+  // The ground: vertex colours (colourAt, the field's tones) x the painted detail and wind bands (grass.js) where vertex attribute grassW
+  // is 1 (meadow); it fades out on sand, banks and riverbed.
+  const terrainMaterial=fieldGround(new T.MeshStandardMaterial({vertexColors:true,roughness:1,map:grassTexture(anisotropy)}));
   const terrainMesh=new T.Mesh(new T.BufferGeometry(),terrainMaterial);terrainMesh.receiveShadow=true;terrainMesh.frustumCulled=false;scene.add(terrainMesh);
   // Outer land: a bare ring of the same ground at a coarse step around the streamed land, so a low camera angle shows
   // meadow running into the haze instead of the edge of the world. One draw, shown only when the view reaches the edge.
@@ -47,9 +28,9 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
   const waterLook=createWaterMaterial(wind.uTime);
   const water=new T.Mesh(new T.BufferGeometry(),waterLook.material);water.renderOrder=1;water.frustumCulled=false;scene.add(water);
 
-  const geos=propGeometries(),solid=propMaterial(),flat=propMaterial({flat:true}),swaying=propMaterial({sway:.09,side:T.DoubleSide}),grassy=propMaterial({sway:.9});
+  const geos=propGeometries(),stones=rockGeometries(),solid=propMaterial(),flat=propMaterial({flat:true}),swaying=propMaterial({sway:.09,side:T.DoubleSide}),grassy=grassMaterial();
   const props=new T.Group();scene.add(props);
-  let world=null,tiles=new Map(),scatter=new Map(),grass=new Map(),key='',grassMesh=null,grassTotal=0;
+  let world=null,tiles=new Map(),scatter=new Map(),grass=new Map(),key='',grassMesh=null,grassTotal=0,blades=new Map(),bladeMesh=null,bladesOn=false;
   // Reach culling: terrain tiles and prop instances are stored nearest-first from the centre chunk's middle, with their
   // distances, so each frame draws only the prefix that can show on screen (see update's reach). One draw each still.
   let centre=[0,0],terrainReach=null,ranged=[],waterTiles=[],waterOuter=null;
@@ -60,10 +41,10 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
   function setWorld(next){
     world={...next,blocked:makeBlocker(next.layout)};world.wild=wildness(next.layout,next.t.P.clearing,world.blocked);
     const sites=next.holds.filter(h=>h.site);world.town=(x,z)=>sites.some(h=>Math.hypot(x-h.x,z-h.z)<h.r+2);
-    tiles.clear();scatter.clear();grass.clear();key='';
+    tiles.clear();scatter.clear();grass.clear();blades.clear();key='';
     waterLook.uniforms.uBed.value=next.t.P.bed;
   }
-  const ctx=()=>({size:world.chunkSize,height:world.height,water:world.t.water,blocked:world.blocked,town:world.town,river:world.t.river,plain:world.t.P.plain_y,treeCell:4.2,wild:world.wild,clearing:world.t.P.clearing,lift:world.height.lift,knolls:world.t.P.knolls});
+  const ctx=()=>({size:world.chunkSize,height:world.height,water:world.t.water,blocked:world.blocked,town:world.town,river:world.t.river,plain:world.t.P.plain_y,treeCell:4.2,wild:world.wild,clearing:world.t.P.clearing,lift:world.height.lift,hill:world.height.hill,knolls:world.t.P.knolls});
 
   function colourAt(x,z,h,out){
     const W=world.t.water;
@@ -71,6 +52,11 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
     if(h<W+.45)return out.copy(PAL.wet).lerp(PAL.sand,(h-W-.05)/.4);
     const lush=noise2(x*.021,z*.021,301)*.5+.5,dry=noise2(x*.0075,z*.0075,302);
     out.copy(PAL.meadow).lerp(PAL.lush,lush*.8).lerp(PAL.dry,Math.max(0,dry)*.75);
+    // The field: lush deep-green swales and sun-dried warm patches, 10-40 m across with ragged edges, under a mottle a few
+    // metres across (deeper and cooler in its dips, sunnier on its rises), so the meadow reads as a living field rather than one tile.
+    const deep=smooth(.15,.6,noise2(x*.035,z*.035,303)+noise2(x*.11,z*.11,304)*.35),sun=smooth(.25,.7,noise2(x*.026,z*.026,305)+noise2(x*.09,z*.09,306)*.3);
+    const m=noise2(x*.15,z*.15,307)*.7+noise2(x*.37,z*.37,308)*.3;
+    out.lerp(PAL.deep,deep*.9).lerp(PAL.sunDried,sun*.6).lerp(m<0?PAL.deep:PAL.sunDried,Math.abs(m)*.32).multiplyScalar(.93+.14*m);
     // Knoll crests (terrain.js knolls) dry out a little, so the rises read from the high camera, not only in low sun.
     const K=world.t.P.knolls;if(K)out.lerp(PAL.dry,Math.min(1,world.height.lift(x,z)/K[1])*.4);
     if(h<W+.9)out.lerp(PAL.sand,(W+.9-h)/.45*.6);
@@ -86,7 +72,7 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
       // Land under roads drops a little, so the coarse grid never pokes through a road ribbon on a slope or bank.
       const x=cx*size+i*step,z=cz*size+j*step,h=H(x,z)-(world.blocked.onRoad(x,z,step*.6)?.18:0),hx=H(x+.5,z)-H(x-.5,z),hz=H(x,z+.5)-H(x,z-.5),l=Math.hypot(hx,1,hz);
       pos[k]=x;pos[k+1]=h;pos[k+2]=z;nrm[k]=-hx/l;nrm[k+1]=1/l;nrm[k+2]=-hz/l;colourAt(x,z,h,c).toArray(col,k);
-      const v=k/3;uv[v*2]=x/GRASS_TILE;uv[v*2+1]=z/GRASS_TILE;grassW[v]=Math.min(1,Math.max(0,(h-W-.45)/.5));
+      const v=k/3;grassUv(x,z,noise2,uv,v*2);grassW[v]=Math.min(1,Math.max(0,(h-W-.45)/.5));
     }
     const t={pos,nrm,col,uv,grassW,n};tiles.set(id,t);return t;
   }
@@ -112,7 +98,7 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
     const x0=(cx-r)*size,x1=(cx+r+1)*size,z0=(cz-r)*size,z1=(cz+r+1)*size,n=Math.round((x1-x0+2*E)/S);
     const pos=[],nrm=[],col=[],uv=[],gw=[],index=[];
     const vert=(x,z,y,up)=>{const h=H(x,z),hx=up?0:H(x+.5,z)-H(x-.5,z),hz=up?0:H(x,z+.5)-H(x,z-.5),l=Math.hypot(hx,1,hz);
-      pos.push(x,y??h,z);nrm.push(-hx/l,1/l,-hz/l);colourAt(x,z,h,c);col.push(c.r,c.g,c.b);uv.push(x/GRASS_TILE,z/GRASS_TILE);gw.push(Math.min(1,Math.max(0,(h-W-.45)/.5)));return pos.length/3-1;};
+      pos.push(x,y??h,z);nrm.push(-hx/l,1/l,-hz/l);colourAt(x,z,h,c);col.push(c.r,c.g,c.b);grassUv(x,z,noise2,uv,uv.length);gw.push(Math.min(1,Math.max(0,(h-W-.45)/.5)));return pos.length/3-1;};
     for(let j=0;j<=n;j++)for(let i=0;i<=n;i++)vert(x0-E+i*S,z0-E+j*S);
     const inner=(i,j)=>{const x=x0-E+i*S,z=z0-E+j*S;return x>=x0&&x+S<=x1&&z>=z0&&z+S<=z1;};
     for(let j=0;j<n;j++)for(let i=0;i<n;i++){
@@ -152,28 +138,42 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
     water.geometry.dispose();water.geometry=geo;water.visible=index.length>0;
   }
   const scatterOf=(x,z)=>{const id=x+':'+z;if(!scatter.has(id))scatter.set(id,scatterChunk(x,z,ctx()));return scatter.get(id);};
-  const grassOf=(x,z,count)=>{const id=x+':'+z;let g=grass.get(id);if(!g||g.asked<count){g={asked:count,list:grassChunk(x,z,count,ctx())};grass.set(id,g);}return g.list;};
+  // Grass keeps off the boulders and slabs (scatterChunk) of its own chunk and the eight around it.
+  const grassCtx=(x,z)=>{const c=ctx(),m=3,x0=x*c.size-m,z0=z*c.size-m,x1=x0+c.size+2*m,z1=z0+c.size+2*m,near=[];
+    for(let i=x-1;i<=x+1;i++)for(let j=z-1;j<=z+1;j++)for(const r of scatterOf(i,j).rocks)if(r.v<2&&r.x>x0&&r.x<x1&&r.z>z0&&r.z<z1)near.push([r.x,r.z,ROCK_FOOT[ROCK_KINDS[r.v]]*r.s]);
+    return near.length?{...c,blocked:(px,pz,rad)=>c.blocked(px,pz,rad)||near.some(([rx,rz,f])=>(px-rx)**2+(pz-rz)**2<(f+rad)**2)}:c;};
+  const grassOf=(x,z,count)=>{const id=x+':'+z;let g=grass.get(id);if(!g||g.asked<count){g={asked:count,list:grassChunk(x,z,count,grassCtx(x,z))};grass.set(id,g);}return g.list;};
+  // Fine blades (Medium and High): BLADES times the tufts' density, in the centre chunk and its ring only.
+  const BLADES=5,BLADE_ZOOM=1.1;
+  const bladeList=rings=>rings.filter(r=>r[2]<=1).flatMap(([x,z])=>{const id=x+':'+z;if(!blades.has(id))blades.set(id,grassChunk(x,z,world.grassPerChunk*BLADES,grassCtx(x,z),'blade'));return blades.get(id);});
+  // A clump's root colour: the ground's own colour there, a little warmer or cooler clump by clump.
+  const vary=new T.Color(),groundRoot=p=>{const c=p.c-.5;return colourAt(p.x,p.z,p.y,tint).multiply(vary.setRGB(1+c*.1,1+c*.06,1-c*.08));};
 
-  function instanced(geo,material,items,{shadow=false,tintAmount=1,sorted=true}={}){
+  function instanced(geo,material,items,{shadow=false,tintAmount=1,sorted=true,root=null}={}){
     if(!items.length)return null;
     const mesh=new T.InstancedMesh(geo,material,items.length);
     // Nearest first, so a prefix (mesh.count) is everything within a radius of the centre.
     if(sorted)items=items.map(p=>({p,d:Math.hypot(p.x-centre[0],p.z-centre[1])})).sort((a,b)=>a.d-b.d);
     const reach=sorted?Float32Array.from(items,i=>i.d):null;if(sorted)items=items.map(i=>i.p);
     items.forEach((p,i)=>{
-      tmp.position.set(p.x,p.y,p.z);tmp.rotation.set(0,p.r,0);tmp.scale.setScalar(p.s);tmp.updateMatrix();mesh.setMatrixAt(i,tmp.matrix);
-      const c=(p.c-.5)*tintAmount;mesh.setColorAt(i,tint.setRGB(1+c*.16,1+c*.1,1-c*.14));
+      // lx, lz: a lean (radians) about the world x and z axes after the yaw ('XZY'); sy: a height stretch. Props without
+      // them stand straight at uniform scale.
+      tmp.position.set(p.x,p.y,p.z);tmp.rotation.set(p.lx||0,p.r,p.lz||0,'XZY');tmp.scale.set(p.s,p.s*(p.sy||1),p.s);tmp.updateMatrix();mesh.setMatrixAt(i,tmp.matrix);
+      const c=(p.c-.5)*tintAmount;mesh.setColorAt(i,root?root(p):tint.setRGB(1+c*.16,1+c*.1,1-c*.14));
     });
     mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.computeBoundingSphere();
     mesh.castShadow=shadow;mesh.receiveShadow=true;props.add(mesh);mesh.userData.reach=reach;return mesh;
   }
   function rebuildProps(cx,cz,rings){
     for(const m of [...props.children]){m.dispose();props.remove(m);}
-    const near=[],far=[],bushes=[],farBushes=[],rocks=[],reeds=[],flowers=[[],[]],tufts=[],decor=Object.fromEntries(DECOR.map(([k])=>[k,[]]));
+    const near=[],far=[],bushes=[],farBushes=[],rocks=[[],[],[],[]],pebbles=[],reeds=[],flowers=[[],[]],tufts=[],decor=Object.fromEntries(DECOR.map(([k])=>[k,[]]));
     for(const [x,z,ring] of rings){
       const s=scatterOf(x,z);
-      for(const tree of s.trees)(ring<=1?near:far).push(tree);
-      for(const b of s.bushes)(ring<=1?bushes:farBushes).push(b);rocks.push(...s.rocks);
+      // Far trees: half on phones (the groves' extra trees cost a phone's Low tier about 4% GPU at the default view).
+      for(const tree of s.trees)if(ring<=1)near.push(tree);else if(!mobile||tree.c<.5)far.push(tree);
+      for(const b of s.bushes)(ring<=1?bushes:farBushes).push(b);
+      // Boulders and slabs: near and far sets (only the near ones cast shadows). Pebbles: detail rings only, half on phones.
+      for(const r of s.rocks)if(r.v<2)rocks[r.v*2+(ring<=1?0:1)].push(r);else if(ring<=world.detailRing&&(!mobile||r.c<.5))pebbles.push(r);
       if(ring<=world.detailRing){reeds.push(...s.reeds);for(const f of s.flowers)flowers[f.v].push(f);for(const k in decor)for(const p of s[k])if(!mobile||p.c<.5)decor[k].push(p);}
       const count=ring<=1?world.grassPerChunk:ring<=world.detailRing?Math.round(world.grassPerChunk*.45):0;
       if(count)tufts.push(...grassOf(x,z,world.grassPerChunk).slice(0,count));
@@ -182,14 +182,17 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
       instanced(geos.trees[v],solid,near.filter(t=>t.v===v),{shadow:true});
       instanced(geos.trees[v],solid,far.filter(t=>t.v===v));
     }
-    instanced(geos.bush,solid,bushes,{shadow:true});instanced(geos.bush,solid,farBushes);instanced(geos.rock,flat,rocks,{shadow:true});
+    instanced(geos.bush,solid,bushes,{shadow:true});instanced(geos.bush,solid,farBushes);
+    for(const [k,kind] of ['boulder','slab'].entries()){instanced(stones[kind],solid,rocks[k*2],{shadow:true,tintAmount:.6});instanced(stones[kind],solid,rocks[k*2+1],{tintAmount:.6});}
+    instanced(stones.pebbles,solid,pebbles,{tintAmount:.6});
     instanced(geos.reed,swaying,reeds);flowers.forEach((list,v)=>instanced(geos.flowers[v],swaying,list,{tintAmount:.5}));
     // Odds and ends: one draw a kind, no shadow pass (it would be a second); half as many on phones.
     for(const k in decor)instanced(geos[k],k==='cairns'?flat:solid,decor[k],{tintAmount:.6});
     // Grass in random order, so drawing a prefix (mesh.count) thins it evenly when zoomed out.
     for(let i=tufts.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[tufts[i],tufts[j]]=[tufts[j],tufts[i]];}
-    grassMesh=instanced(geos.tuft,grassy,tufts,{tintAmount:1.6,sorted:false});grassTotal=tufts.length;
-    ranged=props.children.filter(m=>m!==grassMesh);
+    grassMesh=instanced(geos.tuft,grassy,tufts,{sorted:false,root:groundRoot});grassTotal=tufts.length;
+    bladeMesh=bladesOn?instanced(bladeGeometry(),grassMaterial({fade:true}),bladeList(rings),{root:groundRoot}):null;
+    ranged=props.children.filter(m=>m!==grassMesh&&m!==bladeMesh);
   }
 
   const chunkKey=(x,z)=>Math.floor(x/world.chunkSize)+':'+Math.floor(z/world.chunkSize);
@@ -211,6 +214,8 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
     const size=world.chunkSize;
     if(chunkKey(x,z)!==key){for(const step of rebuildSteps(x,z))step();rebuilt=true;}
     if(grassMesh)grassMesh.count=Math.round(grassTotal*Math.min(1,Math.max(.3,(zoom-.25)/.9)));
+    // Fine blades: within R metres of the view's centre (smaller as the view zooms in), none when zoomed out.
+    if(bladeMesh){const R=Math.min(26,8+26/zoom);bladeMesh.visible=zoom>BLADE_ZOOM;field.uFocus.value.set(x,z,R);bladeMesh.count=bladeMesh.visible?upTo(bladeMesh.userData.reach,R+Math.hypot(x-centre[0],z-centre[1])):0;}
     // Measured from the centre chunk's middle: the reach circle around (x,z) lies inside reach + |offset| of it.
     const limit=reach+Math.hypot(x-centre[0],z-centre[1]);
     for(const m of ranged){m.count=upTo(m.userData.reach,limit);m.visible=m.count>0;}
@@ -219,8 +224,10 @@ export function createMeadow(scene,{mobile,anisotropy=4}){
     return rebuilt;
   }
   /** Time-of-day tints: the terrain colour multiplies its vertex colours; water takes its colour as is. */
-  function setTint(terrain,water){terrainMaterial.color.copy(terrain);waterLook.setTint(water);}
+  function setTint(terrain,water){terrainMaterial.color.copy(terrain);setGrassLook({color:terrain});waterLook.setTint(water);}
   /** Snow cover (weather.js via town.js): the ground and the grass glow a cool white by k (0..1, already dimmed for night). */
-  function setSnow(k){terrainMaterial.emissive.setRGB(k*.93,k*.96,k);grassy.emissive.setRGB(k*.55,k*.58,k*.6);}
-  return {setWorld,update,rebuildSteps,setTint,setSnow,refresh:()=>{key='';}};
+  function setSnow(k){terrainMaterial.emissive.setRGB(k*.93,k*.96,k);setGrassLook({emissive:tint.setRGB(k*.55,k*.58,k*.6)});}
+  /** Medium and High (town.js lowDetail): the ground's finer per-pixel mottle (grass.js GRASS_FINE) and the fine blades. */
+  function setDetail(on){const d=terrainMaterial.defines??={};if(('GRASS_FINE' in d)===on)return;if(on)d.GRASS_FINE='';else delete d.GRASS_FINE;terrainMaterial.needsUpdate=true;bladesOn=on;key='';}
+  return {setWorld,update,rebuildSteps,setTint,setSnow,setDetail,refresh:()=>{key='';}};
 }

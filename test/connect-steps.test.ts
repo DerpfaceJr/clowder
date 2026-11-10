@@ -15,6 +15,7 @@ import {isOwner} from '../src/access.ts';
 import {installRemoteAccess} from '../src/remote-access.ts';
 import {allRoles} from '../src/roles.ts';
 import {Store} from '../src/store.ts';
+import {untilEvery} from './helpers/until.ts';
 
 // Items 0.5-0.7 of docs/product-plan.md: connect steps close on a real sign-in, a second cat gets a grant, and a control phone closes steps.
 const config = JSON.parse(readFileSync(new URL('../town.config.json', import.meta.url), 'utf8'));
@@ -23,7 +24,7 @@ const OWNER = {host: `127.0.0.1:${PORT}`};
 const OWNER_WRITE = {...OWNER, 'x-town-action': 'owner'};
 const tmp = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
 const emptyDataDir = () => { const dir = tmp('connect-steps-data-'); writeFileSync(join(dir, 'connectors.json'), JSON.stringify({connectors: [], plugins: []})); return dir; };
-async function until(fn: () => boolean, ms = 10000) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 20)); } assert.fail('Timed out'); }
+const until = untilEvery(20);
 const reply = (content: string) => ({message: {role: 'assistant', content}});
 const callOf = (name: string, args: unknown) => ({message: {role: 'assistant', content: null, tool_calls: [{id: 'call-' + name, type: 'function', function: {name, arguments: JSON.stringify(args)}}]}});
 const fakeClient = {info: {}, listTools: async () => [{name: 'search', annotations: {readOnlyHint: true}}], callTool: async () => ({text: 'ok', isError: false}), close: async () => {}};

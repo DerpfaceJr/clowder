@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {Store,type Goal} from '../src/store.ts';
 import {Town} from '../src/engine.ts';
 import {type Provider} from '../src/provider.ts';
+import {untilEvery} from './helpers/until.ts';
 
 const base=JSON.parse(readFileSync(new URL('../town.config.json',import.meta.url),'utf8'));
 const fast={...base,goals:{roundPauseSeconds:0.02,maxRoundsPerDay:24,tokenBudget:null}};
@@ -16,7 +17,7 @@ const fixture=(providers:Record<string,Provider>)=>{
   const town=new Town(store,fast,providers);town.autonomy=()=>'balanced';
   return {store,town};
 };
-async function until(fn:()=>boolean,ms=5000){const end=Date.now()+ms;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,10));}assert.fail('Timed out waiting for state transition');}
+const until = untilEvery(10);
 const reply=(content:string)=>({message:{role:'assistant',content}});
 const call=(name:string,args:any)=>({message:{role:'assistant',tool_calls:[{id:'call-'+name+Math.random(),type:'function',function:{name,arguments:JSON.stringify(args)}}]}});
 const roundOf=(messages:any[])=>{const found=[...messages.map(m=>String(m.content??'')).join('\n').matchAll(/This is round (\d+)/g)];return found.length?Number(found.at(-1)![1]):0;};

@@ -1,3 +1,5 @@
+import {cutAtWord} from './one-liner.js';
+
 // Pure diff of two town snapshots, shared by audio.js and notify.js so both agree on what is new, and the message kinds they
 // and app.js's chat and diary agree on. The first refresh only sets a baseline: history already on the page must never chime or notify.
 
@@ -14,14 +16,9 @@ export function goalRound(message) {
   const match = ROUND.exec(String(message.text ?? ''));
   return match ? {round: Number(match[1]), title: match[2].replace(/\s+/g, ' ').trim()} : null;
 }
-// The quiet line chat and the diary show for a round. Goal titles are one line of at most 80 characters; a longer one is cut
-// at a word, as hologram.js oneLiner cuts (not imported: it brings three.js).
+// The quiet line chat and the diary show for a round. Goal titles are one line of at most 80 characters; a longer one is cut at a word (one-liner.js cutAtWord).
 export function roundStarted({round, title}, max = 90) {
-  let cut = title;
-  if (title.length > max) {
-    const head = title.slice(0, max - 1), space = head.lastIndexOf(' ');
-    cut = `${(space > max * .5 ? head.slice(0, space) : head).trimEnd()}…`;
-  }
+  const cut = cutAtWord(title, max);
   return cut ? `Round ${round} of “${cut}” started` : `Goal round ${round} started`;
 }
 

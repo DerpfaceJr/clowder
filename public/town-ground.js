@@ -1,8 +1,9 @@
 import * as T from 'three';
-import {streetLamp,propGeometries,propMaterial} from './world-art.js';
+import {streetLamp,propGeometries} from './world-art.js';
 import {deckY,noise2} from './terrain.js';
 import {makeBlocker} from './vegetation.js';
 import {PAL} from './meadow.js';
+import {grassMaterial} from './grass.js';
 
 // The ONE ground layering scheme. Every flat surface sits at its own lift above the held ground (metres), so no two
 // surfaces that can overlap share a height, and the whole stack is polygon-offset above the terrain mesh. Ortho depth
@@ -294,27 +295,59 @@ export function buildTownGround({sites,yards,roads,junctions,common,homes,L,brid
 
 // Shared clock for the animated ground effects (links and magic lights); town.js advances it.
 export const groundClock={value:0};
-// Delegation links of the selected cat: one ribbon mesh along the walking paths, with light pulses flowing outward.
-// Hidden when nothing is selected, so the physical roads are the only network on the ground.
-let linkMaterial=null;
+// Delegation links of the selected cat: a trail of small paw prints along each walking path, left and right in turn,
+// stamping forward in the direction of travel and fading in and out at both ends. One instanced draw. Hidden when
+// nothing is selected, so the physical roads are the only network on the ground.
+// PAW: print length (m), spacing along the path, offset either side of its line, toe-out, and the smallest size on
+// screen (px), up to MAX_GROW times the print's own size when zoomed far out.
+export const PAW={size:.28,step:.35,side:.12,toe:.14,minPx:18,maxGrow:4,opacity:.55};
+// town.js sets uGrow (from pixels per metre) and uMotion (0 under reduced motion: still prints) every frame.
+export const pawUniforms={uGrow:{value:1},uMotion:{value:1}};
+let pawMaterial=null;
+// The print: a pad and four toe beans in warm cream (--needs #fff3dc) with a soft ink rim (--ink #4b473d), so it
+// reads on pale stone by day and on dark ground at night. Toes point to the top of the canvas.
+function pawTexture(){
+  const c=document.createElement('canvas');c.width=c.height=64;const ctx=c.getContext('2d');
+  const shapes=[[32,42,13,11,0],[17,25,5.2,6.6,-.35],[26.5,18,5.4,7,-.12],[37.5,18,5.4,7,.12],[47,25,5.2,6.6,.35]];
+  const draw=(grow=0)=>{ctx.beginPath();for(const [x,y,rx,ry,a] of shapes){ctx.moveTo(x+(rx+grow)*Math.cos(a),y+(rx+grow)*Math.sin(a));ctx.ellipse(x,y,rx+grow,ry+grow,a,0,Math.PI*2);}ctx.fill();};
+  ctx.fillStyle='rgba(75,71,61,.7)';ctx.filter='blur(2.5px)';draw(3);ctx.filter='none';
+  ctx.fillStyle='#4b473d';draw(2);
+  ctx.fillStyle='#fff3dc';draw();
+  // The main pad's three lobes: two soft notches along its top edge.
+  ctx.globalCompositeOperation='destination-out';ctx.fillStyle='rgba(0,0,0,.35)';for(const x of [27,37]){ctx.beginPath();ctx.ellipse(x,31.5,2.2,2.6,0,0,Math.PI*2);ctx.fill();}
+  const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.anisotropy=4;return t;
+}
 export function buildLinks(paths,walk){
-  linkMaterial??=(()=>{const m=new T.MeshBasicMaterial({color:'#8fd9c3',transparent:true,opacity:.8,depthWrite:false,blending:T.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-6});
-    m.onBeforeCompile=shader=>{shader.uniforms.uTime=groundClock;
-      shader.vertexShader='attribute float along;varying float vAlong;'+String.fromCharCode(10)+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>'+String.fromCharCode(10)+'vAlong=along;');
-      shader.fragmentShader='uniform float uTime;varying float vAlong;'+String.fromCharCode(10)+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>'+String.fromCharCode(10)+'diffuseColor.a*=.12+.5*smoothstep(.6,1.,fract(vAlong*.22-uTime*.9));');};
-    m.customProgramCacheKey=()=>'delegation-link';return m;})();
-  const pos=[],along=[],index=[];
+  pawMaterial??=(()=>{const m=new T.MeshBasicMaterial({map:pawTexture(),transparent:true,opacity:PAW.opacity,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-6});
+    m.onBeforeCompile=shader=>{Object.assign(shader.uniforms,{uTime:groundClock},pawUniforms);
+      // aPrint: x = metres from the path's start, y = metres to its end. A stamp wave runs forward along every path
+      // (2.4 m/s, one every 1.7 s): each print presses in a little and brightens as it passes, then settles.
+      shader.vertexShader='attribute vec2 aPrint;uniform float uTime,uGrow,uMotion;varying vec2 vPrint;varying float vStamp;'+String.fromCharCode(10)+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>'+String.fromCharCode(10)+
+        'vPrint=aPrint;vStamp=uMotion*exp(-5.*fract(uTime*.6-aPrint.x/4.));transformed.xz*=uGrow*(1.+.12*uMotion*exp(-14.*fract(uTime*.6-aPrint.x/4.)));');
+      shader.fragmentShader='varying vec2 vPrint;varying float vStamp;'+String.fromCharCode(10)+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>'+String.fromCharCode(10)+
+        'diffuseColor.a*=smoothstep(0.,1.4,vPrint.x)*smoothstep(0.,1.4,vPrint.y)*(.8+.2*vStamp);');};
+    m.customProgramCacheKey=()=>'paw-trail';return m;})();
+  // Prints every PAW.step metres, alternating sides; where two paths share a stretch, one print per spot.
+  const prints=[],taken=new Set(),cell=PAW.step*.5;
   for(const points of paths){
-    if(points.length<2)continue;const base=pos.length/3;let d=0;
-    points.forEach((p,i)=>{
-      if(i)d+=Math.hypot(p[0]-points[i-1][0],p[1]-points[i-1][1]);
-      const a=points[Math.max(0,i-1)],b=points[Math.min(points.length-1,i+1)],dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz)||1,nx=-dz/len*.07,nz=dx/len*.07;
-      for(const s of [1,-1]){const x=p[0]+nx*s,z=p[1]+nz*s;pos.push(x,walk(x,z)+LIFT.inlay,z);along.push(d);}
-    });
-    for(let i=0;i<points.length-1;i++){const k=base+i*2;index.push(k,k+2,k+1,k+1,k+2,k+3);}
+    if(points.length<2)continue;
+    const s=[0];for(let i=1;i<points.length;i++)s.push(s[i-1]+Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1]));
+    const total=s.at(-1);let i=1,k=0;
+    for(let d=PAW.step/2;d<total;d+=PAW.step,k++){
+      while(i<points.length-1&&s[i]<d)i++;
+      const a=points[i-1],b=points[i],len=s[i]-s[i-1]||1,t=(d-s[i-1])/len,dx=(b[0]-a[0])/len,dz=(b[1]-a[1])/len,side=k%2?1:-1;
+      const x=a[0]+(b[0]-a[0])*t-dz*PAW.side*side,z=a[1]+(b[1]-a[1])*t+dx*PAW.side*side,key=Math.round(x/cell)+','+Math.round(z/cell);
+      if(taken.has(key))continue;taken.add(key);
+      prints.push({x,z,yaw:Math.atan2(-dx,-dz)-side*PAW.toe,from:d,to:total-d});
+    }
   }
-  const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setAttribute('along',new T.Float32BufferAttribute(along,1));geo.setIndex(index);
-  const m=new T.Mesh(geo,linkMaterial);m.userData.ownedGeometry=true;m.renderOrder=3;return m;
+  const geo=new T.PlaneGeometry(PAW.size*.85,PAW.size).rotateX(-Math.PI/2),data=new Float32Array(Math.max(1,prints.length)*2);
+  const mesh=new T.InstancedMesh(geo,pawMaterial,Math.max(1,prints.length)),m=new T.Matrix4(),q=new T.Quaternion(),up=new T.Vector3(0,1,0),p=new T.Vector3(),one=new T.Vector3(1,1,1);
+  prints.forEach((pr,i)=>{mesh.setMatrixAt(i,m.compose(p.set(pr.x,walk(pr.x,pr.z)+LIFT.inlay,pr.z),q.setFromAxisAngle(up,pr.yaw),one));data[i*2]=pr.from;data[i*2+1]=pr.to;});
+  geo.setAttribute('aPrint',new T.InstancedBufferAttribute(data,2));
+  mesh.count=prints.length;mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();
+  // The bounding sphere is from the prints' centres; zoomed out they grow (uGrow), so it is not used to cull them.
+  mesh.frustumCulled=false;mesh.userData.ownedGeometry=true;mesh.renderOrder=3;return mesh;
 }
 
 // Night "magic lights": soft orbs floating beside every street toward every door. One Points draw, additive, no shadows.
@@ -384,15 +417,16 @@ export function buildContactShadows(items){
 }
 
 // Grass along the town's edges: tufts just outside every common's kerb ring and every cobbled street's kerbs, where the
-// meadow's own grass keeps clear of the paving. One InstancedMesh with the meadow's grass clump and swaying material.
+// meadow's own grass keeps clear of the paving. One InstancedMesh with the meadow's grass clump and material (grass.js).
 export function buildEdgeGrass({sites,roads,yards,homes,common,L},height,water){
   const pts=[],streets=makeBlocker({roads:roads.filter(r=>r.width>0)}),radius=s=>s.common??common,houseYards=homes.filter(h=>h.plot!==0).map(h=>({x:h.x,z:h.z,r:L.house_radius*.8}));
   const clear=(x,z)=>!streets.onRoad(x,z,.25)&&!sites.some(s=>Math.hypot(x-s.x,z-s.z)<radius(s)+.3)&&![...yards,...houseYards].some(y=>Math.hypot(x-y.x,z-y.z)<y.r+.2)&&height(x,z)>water+.6;
   const add=(x,z,k)=>{if(clear(x,z))pts.push([x,z,noise2(x*3.1,z*3.1,k)]);};
   for(const s of sites){const r=radius(s)+.45,n=Math.ceil(Math.PI*2*r/.42);for(let i=0;i<n;i++){const a=(i+.5*noise2(i,s.x,91))/n*Math.PI*2,rr=r+.15*noise2(i,s.z,92);add(s.x+Math.cos(a)*rr,s.z+Math.sin(a)*rr,93);}}
   for(const chain of chains(roads).filter(c=>c.kind==='local'))for(const side of [1,-1]){const k=lanes(chain.points,[side*(chain.width+.42)],2*chain.width,.45);for(const [x,z] of k.lines[0]||[])add(x,z,94);}
-  const mesh=new T.InstancedMesh(propGeometries().tuft,propMaterial({sway:.9}),Math.max(1,pts.length)),t=new T.Object3D(),tint=new T.Color();
+  // Roots in the ground colour by the kerbs (meadow.js colourAt leans the land there toward PAL.town), as the meadow's own clumps.
+  const mesh=new T.InstancedMesh(propGeometries().tuft,grassMaterial(),Math.max(1,pts.length)),t=new T.Object3D(),tint=new T.Color(),root=PAL.meadow.clone().lerp(PAL.town,.35);
   // A little below the held ground: the meadow's own land dips under road edges (meadow.js), and a floating tuft shows.
-  pts.forEach(([x,z,c],i)=>{t.position.set(x,height(x,z)-.12,z);t.rotation.set(0,c*Math.PI,0);t.scale.setScalar(.95+.35*(c*.5+.5));t.updateMatrix();mesh.setMatrixAt(i,t.matrix);mesh.setColorAt(i,tint.setRGB(1+c*.08,1+c*.05,1-c*.07));});
+  pts.forEach(([x,z,c],i)=>{t.position.set(x,height(x,z)-.12,z);t.rotation.set(0,c*Math.PI,0);const s=.95+.35*(c*.5+.5);t.scale.set(s,s*(.85+.3*((c*3.7%1+1)%1)),s);t.updateMatrix();mesh.setMatrixAt(i,t.matrix);mesh.setColorAt(i,tint.setRGB(1+c*.05,1+c*.03,1-c*.04).multiply(root));});
   mesh.count=pts.length;mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.computeBoundingSphere();mesh.receiveShadow=true;return mesh;
 }
